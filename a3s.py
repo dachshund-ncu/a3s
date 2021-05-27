@@ -3,7 +3,7 @@
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf
+from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan
 from numpy.fft import fft, fftfreq, rfft
 # -----------
 # -- math i mpmath --
@@ -16,7 +16,7 @@ from astropy.coordinates import SkyCoord, FK5
 import astropy.units as u
 # -------------
 # -- sys --
-from sys import argv
+from sys import argv, exit
 # ---------
 # -- barycorrpy --
 from barycorrpy import get_BC_vel
@@ -348,11 +348,15 @@ class datfile:
         self.auto = asarray(self.auto)
         # ----- Koniec czytania danych --
 
-    def correct_auto(self):
+    def correct_auto(self, scannr = 1):
         # -- obliczamy średnią z ostatnich 240 kanałów --
         self.average = []
         for i in range(len(self.auto)):
-            self.average.append(mean(self.auto[i][3857:]))
+            if mean(self.auto[i][3857:]) == 0.0:
+                self.average.append(1.0)
+                print("-------> BBC", i, "corrupted!")
+            else:
+                self.average.append(mean(self.auto[i][3857:]))
         self.average = asarray(self.average)
 
         # -- generujemy tablicę z wartościami z pierwszych pikseli --
@@ -361,12 +365,11 @@ class datfile:
         for i in range(len(self.auto)):
             self.auto0tab.append(self.auto[i][0])
         self.auto0tab = asarray(self.auto0tab)
-
         # -- liczymy prawdziwą ilość "samples accumulated" - cokolwiek to znaczy --
         # -- liczymy multiple --
         self.multiple = []
         for i in range(len(self.auto)):
-            self.multiple.append(int(nint(self.auto0tab[i] / self.average[i])))
+                self.multiple.append(int(nint(self.auto0tab[i] / self.average[i])))
         self.multiple = asarray(self.multiple)
 
         # -- liczymy Nmax --
@@ -562,6 +565,20 @@ class datfile:
     
 # ----------------------------------
 
+
+# ---- powiadomienie powitalne ----
+print("-----------------------------------------")
+print("-----> Welcome to A3S")
+print("-----> A3S is a tool to make FFT from 4096 channel autocorrelator output")
+print("-----> It also shifts line to channel 1024")
+
+if len(argv) < 2:
+    print()
+    print("-----> USAGE: a3s.py list_of_.DAT_files")
+    print("-----> You need to pass list in the argument")
+    print("-----> exiting")
+    exit()
+
 # --- metoda wczytująca listę ---
 def read_list_of_files(list_filename):
     # -- otwieramy --
@@ -620,18 +637,21 @@ source_bd = int(source_B)
 source_bm = int(60.0 * (source_B % 1))
 # ------------------------------------------------------
 
-
+# --- printowanie komunikatu ---
+print("-----> Loaded", len(tab), "scans")
 
 # --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
 for i in range(len(tab)):
-
+    print("-------------")
+    print("-----> SCAN", i+1)
     # -- korekta funkcji autokorelacji --
     # ze względu na 2 i 3 poziomową kwantyzację etc.
-    tab[i].correct_auto()
+    tab[i].correct_auto(scannr = i+1)
+    print("-----> CORRECTED ACF")
 
     # -- wygładzanie Hanninga --
     tab[i].hanning_smooth()
-
+    print("-----> APPLIED HANNING SMOOTHING")
     # -- korekta na ruch ziemi --
     # obejmuje ona: 
     # 1. ruch wokół własnej osi
@@ -645,6 +665,7 @@ for i in range(len(tab)):
     # 5: wysokość nad geoidą zi-emii
     # doppset wykonuje również rotację f. autokorelacji
     tab[i].doppset(source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height)
+    print("-----> SHIFTED LINE BY", round(tab[i].fcBBC[0],3), "CHANNELS")
 
     # -- kilka statystyk liczymy --
     tab[i].do_statistics()
@@ -658,13 +679,15 @@ for i in range(len(tab)):
 
     # -- robimy transformatę fouriera --
     tab[i].make_transformata_furiata()
+    print("-----> MADE FFT")
 
     # -- kalibrujemy tsys --
     tab[i].calibrate_in_tsys()
 
-
+print("-------------")
 # -- zapisujemy --
 # plik wynikowy z zapisanymi danymi
+print("-----> Saving to file WYNIK.DAT")
 fle = open("WYNIK.DAT", "w+")
 
 # pętla zapisująca 
@@ -701,3 +724,4 @@ for i in range(len(tab)):
 
 # -- zamykamy plik --
 fle.close()
+print("-----> Completed succesfully. Ending")
