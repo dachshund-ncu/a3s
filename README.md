@@ -13,10 +13,10 @@ requirements:
 how to install required modules:
 you can use pip:
 
-sudo pip3 install numpy
-sudo pip3 install astropy
-sudo pip3 install mpmath
-sudo pip3 install barycorrpy
+- sudo pip3 install numpy
+- sudo pip3 install astropy
+- sudo pip3 install mpmath
+- sudo pip3 install barycorrpy
 
 usage:
 type a3s.py list_of_.DAT_files
