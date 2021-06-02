@@ -3,7 +3,7 @@
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan
+from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning
 from numpy.fft import fft, fftfreq, rfft
 # -----------
 # -- math i mpmath --
@@ -406,7 +406,7 @@ class datfile:
     def hanning_smooth(self):
         # wygładzamy funkcję autokorelacji
         for i in range(len(self.auto)):
-            for j in range(len(self.auto[i])):
+            for j in range(1,len(self.auto[i]), 1):
                 cosine = cos(pi * (j-1) / self.NN )**2.0
                 self.auto[i][j] = self.auto[i][j] * cosine
     
@@ -571,12 +571,13 @@ print("-----------------------------------------")
 print("-----> Welcome to A3S")
 print("-----> A3S is a tool to make FFT from 4096 channel autocorrelator output")
 print("-----> It also shifts line to channel 1024")
-
 if len(argv) < 2:
-    print()
+    print("-----------------------------------------")
+    print("-----> WARNING: no list provided!")
     print("-----> USAGE: a3s.py list_of_.DAT_files")
-    print("-----> You need to pass list in the argument")
-    print("-----> exiting")
+    print("-----> You need to pass list in the argument!")
+    print("-----> Exiting...")
+    print("-----------------------------------------")
     exit()
 
 # --- metoda wczytująca listę ---
@@ -639,19 +640,15 @@ source_bm = int(60.0 * (source_B % 1))
 
 # --- printowanie komunikatu ---
 print("-----> Loaded", len(tab), "scans")
-
+print("-----------------------------------------")
 # --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
 for i in range(len(tab)):
-    print("-------------")
-    print("-----> SCAN", i+1)
     # -- korekta funkcji autokorelacji --
     # ze względu na 2 i 3 poziomową kwantyzację etc.
     tab[i].correct_auto(scannr = i+1)
-    print("-----> CORRECTED ACF")
 
     # -- wygładzanie Hanninga --
     tab[i].hanning_smooth()
-    print("-----> APPLIED HANNING SMOOTHING")
     # -- korekta na ruch ziemi --
     # obejmuje ona: 
     # 1. ruch wokół własnej osi
@@ -665,7 +662,7 @@ for i in range(len(tab)):
     # 5: wysokość nad geoidą zi-emii
     # doppset wykonuje również rotację f. autokorelacji
     tab[i].doppset(source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height)
-    print("-----> SHIFTED LINE BY", round(tab[i].fcBBC[0],3), "CHANNELS")
+    print("-----> scan %d: line shifted by %4.3f channels" % (i+1, round(tab[i].fcBBC[0],3)))
 
     # -- kilka statystyk liczymy --
     tab[i].do_statistics()
@@ -679,12 +676,11 @@ for i in range(len(tab)):
 
     # -- robimy transformatę fouriera --
     tab[i].make_transformata_furiata()
-    print("-----> MADE FFT")
 
     # -- kalibrujemy tsys --
     tab[i].calibrate_in_tsys()
+print("-----------------------------------------")
 
-print("-------------")
 # -- zapisujemy --
 # plik wynikowy z zapisanymi danymi
 print("-----> Saving to file WYNIK.DAT")
@@ -725,3 +721,4 @@ for i in range(len(tab)):
 # -- zamykamy plik --
 fle.close()
 print("-----> Completed succesfully. Ending")
+print("-----------------------------------------")
