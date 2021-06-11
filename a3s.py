@@ -209,7 +209,7 @@ class datfile:
             self.isotime = self.isotime + str(int(self.month)) + "-"
 
         if len(str(int(self.day))) == 1:
-            self.isotime = slef.isotime + "0" + str(int(self.day)) + "T"
+            self.isotime = self.isotime + "0" + str(int(self.day)) + "T"
         else:
             self.isotime = self.isotime + str(int(self.day)) + "T"
 
