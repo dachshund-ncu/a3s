@@ -3,11 +3,11 @@
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning
-from numpy.fft import fft, fftfreq, rfft
+from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
+from numpy.fft import fft
 # -----------
 # -- math i mpmath --
-from math import copysign
+from math import copysign, floor, ceil
 from mpmath import nint
 # -----------
 # -- astropy --
@@ -19,7 +19,7 @@ import astropy.units as u
 from sys import argv, exit
 # ---------
 # -- barycorrpy --
-from barycorrpy import get_BC_vel
+from PyAstronomy.pyasl import helcorr
 # ----------------
 
 # --------- ZESTAWY GLOBALNYCH FUNKCJI --------------
@@ -414,15 +414,13 @@ class datfile:
         # -------------- PRĘDKOŚCI --------------------
         # -- liczymy prędkość wokół barycentrum + rotacja wokół własnej osi --
         # rzutowane na źródło
-        self.baryvel = get_BC_vel(self.tee, ra=self.RA*15, dec=self.DEC,  lat=szer_geog, longi=dl_geog, epoch=2000, alt=height, SolSystemTarget=None, predictive=False)
-
+        self.baryvel, hjd = helcorr(obs_long = dl_geog, obs_lat = szer_geog, obs_alt = height, ra2000 = self.RA*15, dec2000 = self.DEC, jd=self.tee.jd)
         # -- liczymy prędkość w lokalnym standardzie odniesienia --
         # rzutowane na źródło
         self.lsrvel = lsr_motion(source_JNOW_RA, source_JNOW_DEC, self.decimalyear)
 
         # -- prędkość dopplerowska to będzie ich suma --
-        self.Vdop = self.baryvel[0] / 1000.0 + self.lsrvel
-        self.Vdop = self.Vdop[0]
+        self.Vdop = self.baryvel + self.lsrvel
         # ----------------------------------------------
 
         # --------------- ROTACJA WIDMA ----------------
@@ -480,17 +478,32 @@ class datfile:
             self.auto_prepared_to_fft.append(zeros(2 * self.NN + 1))
         self.auto_prepared_to_fft = asarray(self.auto_prepared_to_fft)
 
+        # -- tworzymy tablice --
+        self.auto_prepared_to_fft = zeros((4, self.NN), dtype=complex128) # docelowa
         # -- przygotowujemy funkcje autokorelacji do FFT --
         for w in range(len(self.auto)): # iteruje po bbc
-            for i in range(1, int(self.NN / 2), 1): # iteruje po kanałach bbc
-                sin_phase = sin( (i-1) * self.fr[w])
-                cos_phase = cos( (i-1) * self.fr[w])
-                self.auto_prepared_to_fft[w][i * 2 - 1] = self.auto[w][i] * cos_phase
-                self.auto_prepared_to_fft[w][i * 2] = self.auto[w][i] * sin_phase
-                self.auto_prepared_to_fft[w][2 - i*2] = self.auto_prepared_to_fft[w][i*2-1]
-                self.auto_prepared_to_fft[w][3 - i*2] = -self.auto_prepared_to_fft[w][i*2]
-            self.auto_prepared_to_fft[w][self.NN+1] = 0
-            self.auto_prepared_to_fft[w][self.NN+2] = 0
+            # generujemy tablice tymczasowe
+            self.auto_prepared_to_fft_real = zeros((self.NN)) # tymczasowa, rzeczywiste
+            self.auto_prepared_to_fft_imag = zeros((self.NN)) # tymczasowa, urojone
+            # zapełniamy je
+            for i in range(0, int(self.NN / 2)): # iteruje po kanałach bbc
+                # -- fazy do rotacji widma --
+                sin_phase = sin( (i) * self.fr[w])
+                cos_phase = cos( (i) * self.fr[w])
+                
+                self.auto_prepared_to_fft_real[i] = self.auto[w][i+1] * cos_phase # część rzeczywista
+                self.auto_prepared_to_fft_imag[i] = self.auto[w][i+1] * sin_phase # część zespolona
+                self.auto_prepared_to_fft_real[-i] = self.auto_prepared_to_fft_real[i] # mirror części rzeczywistej
+                self.auto_prepared_to_fft_imag[-i] = -self.auto_prepared_to_fft_imag[i] # mirror części zespolonej
+                
+            # korzystając z wektoryzacji łączymy tablice
+            self.auto_prepared_to_fft_real[int(self.NN / 2)] = 0.0
+            self.auto_prepared_to_fft_imag[int(self.NN / 2)] = 0.0
+            #self.auto_prepared_to_fft_real[0] = 0.0
+            #self.auto_prepared_to_fft_imag[0] = 0.0
+            # ustawiamy jeszcze początek
+            self.auto_prepared_to_fft[w].real = self.auto_prepared_to_fft_real
+            self.auto_prepared_to_fft[w].imag = self.auto_prepared_to_fft_imag
         # --------------
 
     # -- liczy kilka parametrów --
@@ -521,24 +534,22 @@ class datfile:
         # -- ekstrahujemy odpowiednie tablice --
         self.tab_to_fft = []
         for i in range(len(self.auto_prepared_to_fft)):
-            self.tab_to_fft.append(self.auto_prepared_to_fft[i][1:len(self.auto_prepared_to_fft[i])])
+            self.tab_to_fft.append(self.auto_prepared_to_fft[i])
         self.tab_to_fft = asarray(self.tab_to_fft)
         # -- wykonujemy transformatę furiata --
         self.spectr_bbc = []
         for i in range(len(self.auto)):
-            self.spectr_bbc.append(rfft(self.tab_to_fft[i]).real)
+            self.spectr_bbc.append(fft(self.tab_to_fft[i]).real)
         self.spectr_bbc = asarray(self.spectr_bbc)
 
         # -- ekstra*ujemy odpowiednie części --
         self.spectr_bbc_final = []
         for i in range(len(self.auto)):
-            # -- sprawszamy, czy berzemy LSB czy USB:
-            if self.fvideo[i] > 0:
-                self.kstart = int(self.NN / 2) + 1
-            else:
-                self.kstart = 0
-            # -- ekstrakcja właściwa --
-            self.spectr_bbc_final.append(self.spectr_bbc[i][self.kstart:self.kstart + int(len(self.spectr_bbc[i]) / 2)])
+            # -- sprawdzamy, czy berzemy dolne czy górne:
+            if self.fvideo[i] > 0: # jak tak, to górne
+                self.spectr_bbc_final.append(self.spectr_bbc[i][int(self.NN / 2):])
+            else: # jak nie, to dolne
+                self.spectr_bbc_final.append(self.spectr_bbc[i][:int(self.NN / 2)])
         self.spectr_bbc_final = asarray(self.spectr_bbc_final)
 
     # -- kalibruje dane w tsys --
@@ -623,9 +634,7 @@ source_J2000 = SkyCoord(ra=tab[0].RA*u.hourangle, dec=tab[0].DEC*u.degree, frame
 frame_now = FK5(equinox="J" + str(tab[0].decimalyear))
 # -- by wykonać precesję i nutację wystarczy teraz: 
 source_JNOW = source_J2000.transform_to(frame_now)
-# -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
-source_JNOW_RA = (source_JNOW.ra*u.degree).value
-source_JNOW_DEC = (source_JNOW.dec*u.degree).value
+# będziemy robić precesję w głównej pętli
 # ------------------------------------------------------
 
 # ---------- WSPÓŁRZĘDNE GALAKTYCZNE -------------------
@@ -643,12 +652,25 @@ print("-----> Loaded", len(tab), "scans")
 print("-----------------------------------------")
 # --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
 for i in range(len(tab)):
+
+    # ------------- PRECESJA I NUTACJA ---------------
+    # -- wykonujemy precesję na czas obecnego skanu --
+    # -- do precesji deklarujemy nowy frame FK5 z epoką aktualnego skanu --
+    frame_now = FK5(equinox="J" + str(tab[i].decimalyear))
+    # -- by wykonać precesję i nutację wystarczy teraz: 
+    source_JNOW = source_J2000.transform_to(frame_now)
+    # -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
+    source_JNOW_RA = (source_JNOW.ra*u.degree).value
+    source_JNOW_DEC = (source_JNOW.dec*u.degree).value
+    # ------------------------------------------------
+
     # -- korekta funkcji autokorelacji --
     # ze względu na 2 i 3 poziomową kwantyzację etc.
     tab[i].correct_auto(scannr = i+1)
 
     # -- wygładzanie Hanninga --
     tab[i].hanning_smooth()
+
     # -- korekta na ruch ziemi --
     # obejmuje ona: 
     # 1. ruch wokół własnej osi
