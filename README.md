@@ -1,7 +1,7 @@
 # a3s
 Python program, that makes FFT from 4096 point autocorrelation function
 
-current version: 0.2 BETA
+current version: 0.3 BETA
 
 requirements:
 - numpy
