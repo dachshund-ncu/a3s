@@ -41,4 +41,4 @@ usage:
 a3s.py list_of_.DAT_files
 
 
-program returns file named 'WYNIK.DAT' with spectra
+Script returns file named 'WYNIK.DAT' with spectra
