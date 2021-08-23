@@ -4,11 +4,11 @@
 # -- importujemy potrzebne moduły --
 # -- numpy --
 from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
-from numpy.fft import fft, fftshift, rfft
-#from scipy.fft import fft
+from numpy.fft import fft
 # -----------
 # -- math i mpmath --
 from math import copysign, floor, ceil
+from cmath import sqrt as math_sqrt
 from mpmath import nint
 # -----------
 # -- astropy --
@@ -520,41 +520,22 @@ class datfile:
         self.fcBBC = self.fc
 
         # -- przygotowujemy dane do fft --
-        self.fr = self.fc * 2.0 * pi / self.NN 
+        self.fr = - self.fc * 2.0 * pi / self.NN
 
         # -- przygotowujemy tablicę do FFT --
-        # tutaj mamy coś takiego:
-        self.auto_prepared_to_fft = []
-        for i in range(len(self.auto)):
-            self.auto_prepared_to_fft.append(zeros(2 * self.NN + 1))
-        self.auto_prepared_to_fft = asarray(self.auto_prepared_to_fft)
-
-        # -- tworzymy tablice --
         self.auto_prepared_to_fft = zeros((4, self.NN), dtype=complex128) # docelowa
-        # -- przygotowujemy funkcje autokorelacji do FFT --
-        for w in range(len(self.auto)): # iteruje po bbc
-            # generujemy tablice tymczasowe
-            self.auto_prepared_to_fft_real = zeros((self.NN)) # tymczasowa, rzeczywiste
-            self.auto_prepared_to_fft_imag = zeros((self.NN)) # tymczasowa, urojone
-            # zapełniamy je
-            for i in range(0, int(self.NN / 2)): # iteruje po kanałach bbc
-                # -- fazy do rotacji widma --
-                sin_phase = sin( (i) * self.fr[w] )
-                cos_phase = cos( (i) * self.fr[w] )
-                
-                self.auto_prepared_to_fft_real[i] = self.auto[w][i+1] * cos_phase # część rzeczywista
-                self.auto_prepared_to_fft_imag[i] = self.auto[w][i+1] * sin_phase # część zespolona
-                self.auto_prepared_to_fft_real[-i] = self.auto_prepared_to_fft_real[i] # mirror części rzeczywistej
-                self.auto_prepared_to_fft_imag[-i] = -self.auto_prepared_to_fft_imag[i] # mirror części zespolonej
-                
-            # korzystając z wektoryzacji łączymy tablice
-            # środek zerujemy
-            self.auto_prepared_to_fft_real[int(self.NN / 2)] = 0.0
-            self.auto_prepared_to_fft_imag[int(self.NN / 2)] = 0.0
-            # konstruujemy naszą tablicę
-            self.auto_prepared_to_fft[w].real = self.auto_prepared_to_fft_real
-            self.auto_prepared_to_fft[w].imag = self.auto_prepared_to_fft_imag
+        # --- rotujemy funkcję autokorelacji (mnożymy przez exp(sqrt(-1) * self.fr)) --
+        for w in range(len(self.auto)): # iteruje po BBC
+            for i in range(0, int(self.NN / 2) ): # iteruje po kanałach
+                phase = (i) * self.fr[w]
+                shift_coefficient = exp(math_sqrt(-1) * phase)
+                # non-mirror part
+                self.auto_prepared_to_fft[w][i] = self.auto[w][i+1] * shift_coefficient
+                # mirror part
+                self.auto_prepared_to_fft[w][-i] = self.auto_prepared_to_fft[w][i].conjugate() # odwracamy znakiem część zespoloną
+            self.auto_prepared_to_fft[w][2048] = (0 + 0j)
         # --------------
+
 
     # -- liczy kilka parametrów --
     def do_statistics(self):
@@ -585,9 +566,9 @@ class datfile:
         # -- wykonujemy transformatę furiata --
         self.spectr_bbc = []
         for i in range(len(self.auto)):
-            self.spectr_bbc.append(fft(self.auto_prepared_to_fft[i]).real)
+            tmp_spectr = fft(self.auto_prepared_to_fft[i]).real
+            self.spectr_bbc.append(tmp_spectr)
         self.spectr_bbc = asarray(self.spectr_bbc)
-
         # -- ekstra*ujemy odpowiednie części --
         self.spectr_bbc_final = []
         for i in range(len(self.auto)):
