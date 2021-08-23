@@ -4,7 +4,8 @@
 # -- importujemy potrzebne moduły --
 # -- numpy --
 from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
-from numpy.fft import fft
+from numpy.fft import fft, fftshift, rfft
+#from scipy.fft import fft
 # -----------
 # -- math i mpmath --
 from math import copysign, floor, ceil
@@ -134,7 +135,11 @@ class datfile:
         # -- stałe --
         self.c = 2.99792458e+5
         self.NN = 8192
-        # -- zapisujemy pierwszy atrybut - nazwę pliku .DAT
+
+        # -- tablica z częstotliwościami restf --
+        self.template_restfreqs = [1420.405751, 1612.23101, 1665.40184, 1667.35903, 1720.52998 ,6668.518,6030.747, 6035.092, 6049.084, 6016.746, 4765.562, 4592.976, 4593.098, 4829.664, 2178.595]
+        
+        # -- zapisujemy pierwszy atrybut - nazwę pliku .DAT --
         self.fname = filename
     
         # -- czytamy dalej --
@@ -353,10 +358,10 @@ class datfile:
         self.average = []
         for i in range(len(self.auto)):
             if mean(self.auto[i][3857:]) == 0.0:
-                self.average.append(1.0)
-                print("-------> BBC", i, "corrupted!")
-            else:
-                self.average.append(mean(self.auto[i][3857:]))
+                pass
+                #print("-------> BBC", i, "corrupted!")
+            # - warto pamiętać, żę "average" może przyjmować wartość równą 0.0! -
+            self.average.append(mean(self.auto[i][3857:]))
         self.average = asarray(self.average)
 
         # -- generujemy tablicę z wartościami z pierwszych pikseli --
@@ -365,20 +370,36 @@ class datfile:
         for i in range(len(self.auto)):
             self.auto0tab.append(self.auto[i][0])
         self.auto0tab = asarray(self.auto0tab)
+
         # -- liczymy prawdziwą ilość "samples accumulated" - cokolwiek to znaczy --
         # -- liczymy multiple --
         self.multiple = []
         for i in range(len(self.auto)):
+            # - zabezpieczamy przed "average" równym 0 -
+            if self.average[i] == 0.0:
+                self.multiple.append(0)
+            else:
                 self.multiple.append(int(nint(self.auto0tab[i] / self.average[i])))
         self.multiple = asarray(self.multiple)
 
         # -- liczymy Nmax --
         self.Nmax = []
         for i in range(len(self.auto)):
-            self.Nmax.append(int(self.auto0tab[i] / self.multiple[i]))
+            # - zaabezpieczamy przed "multiple" równym 0 -
+            if self.multiple[i] == 0.0:
+                self.Nmax.append(0)
+            else:
+                self.Nmax.append(int(self.auto0tab[i] / self.multiple[i]))
+        self.Nmax = asarray(self.Nmax)
 
         # -- liczymy bias --
-        self.bias0 = self.average / self.Nmax - 1
+        self.bias0 = []
+        for i in range(len(self.auto)):
+            if self.Nmax[i] == 0.0:
+                self.bias0.append(0.0)
+            else:
+                self.bias0.append(self.average[i] / self.Nmax[i] - 1)
+        self.bias0 = asarray(self.bias0)
 
         # -- edytujemy dane, pozbawiając się intencjonalnego biasu --
         for i in range(len(self.auto)):
@@ -392,7 +413,13 @@ class datfile:
         self.zero_lag_auto = asarray(self.zero_lag_auto)
 
         # -- to samo, tylko znormalizowane --
-        self.r0 = self.zero_lag_auto / self.Nmax
+        self.r0 = []
+        for i in range(len(self.auto)):
+            if self.Nmax[i] == 0.0:
+                self.r0.append(0.0)
+            else:
+                self.r0.append(self.zero_lag_auto[i] / self.Nmax[i])
+        self.r0 = asarray(self.r0)
 
         # -- normalizujemy całą funkcję autokorelacji --
         for i in range(len(self.auto)):
@@ -424,6 +451,15 @@ class datfile:
         # ----------------------------------------------
 
         # --------------- ROTACJA WIDMA ----------------
+        # sprawdzamy, czy nasze rest jest w tablicy z template
+        for i in range(len(self.auto)): # iteracja po indeksach
+            for tmp_ind in self.template_restfreqs: # iteracja po templatkach
+                # - jeśli znajdziemy int(nasza_częstotliwość) w templatce, to zamiast -
+                # - restfreq z pliku używamy tego z templatki -
+                if int(self.rest[i]) == int(tmp_ind):
+                    self.rest[i] = tmp_ind
+                    break
+        
         # --- rotowanie oryginalnego widma ---
         # przesuwamy linię na 1/4 wstęgi
         self.lo[0] = self.lo[0] - (self.bw[0] / 4)
@@ -436,7 +472,6 @@ class datfile:
         for i in range(len(self.auto)):
             self.fvideo.append(self.f_IF[i] - copysign(self.bbcfr[i], self.f_IF[i]))
         self.fvideo = asarray(self.fvideo)
-
         # kanał, w którym jest linia w domenie częstotliwości
         # F DUCT
         self.NNch = len(self.auto[0]) - 1 # nnch jest rodzaju INT
@@ -444,7 +479,6 @@ class datfile:
         for i in range(len(self.auto)):
             self.kanalf.append(int(self.NNch * abs(self.fvideo[i]) / self.bw[i] + 1))
         self.kanalf = asarray(self.kanalf)
-
         # wprowadzamy Q
         # Q* ilość kanałów = nr.kanału, w którym leży linia
         self.q = []
@@ -456,22 +490,22 @@ class datfile:
             else:
                 self.q.append(1.0 - self.fvideo[i] / self.bw[i] - 1.0 / self.NNch)
         self.q = asarray(self.q)
+        
         # robimy kanalv
         self.kanalv = self.NNch - self.kanalf + 1
-
         # prędkość w kanale 1024 w spoektrum częstotliwości
         self.v1024f = self.vlsr + (1024 - self.kanalf) * (-self.c * self.bw) / (self.rest * self.NNch)
         # prędkość w kanale 1024 w spektrum prędkości
-        self.v1024v = self.vlsr + (1024 - self.kanalv) * (-self.c * self.bw) / (self.rest * self.NNch)
+        self.v1024v = self.vlsr + (1024 - self.kanalv) * (self.c * self.bw) / (self.rest * self.NNch)
         
         # ilość kanałów, o które trzeba przerotować widmo 
         self.fc = self.q * self.NNch - 1024
         self.fcBBC = self.fc
-        
+
         # -- przygotowujemy dane do fft --
         self.fr = self.fc * 2.0 * pi / self.NN 
 
-        # -- dwa indeksy --
+        # -- przygotowujemy tablicę do FFT --
         # tutaj mamy coś takiego:
         self.auto_prepared_to_fft = []
         for i in range(len(self.auto)):
@@ -497,11 +531,11 @@ class datfile:
                 self.auto_prepared_to_fft_imag[-i] = -self.auto_prepared_to_fft_imag[i] # mirror części zespolonej
                 
             # korzystając z wektoryzacji łączymy tablice
+            # środek zerujemy
             self.auto_prepared_to_fft_real[int(self.NN / 2)] = 0.0
             self.auto_prepared_to_fft_imag[int(self.NN / 2)] = 0.0
-            #self.auto_prepared_to_fft_real[0] = 0.0
-            #self.auto_prepared_to_fft_imag[0] = 0.0
-            # ustawiamy jeszcze początek
+            self.auto_prepared_to_fft_real[0] = 0.99999999985394450
+            # konstruujemy naszą tablicę
             self.auto_prepared_to_fft[w].real = self.auto_prepared_to_fft_real
             self.auto_prepared_to_fft[w].imag = self.auto_prepared_to_fft_imag
         # --------------
@@ -531,15 +565,11 @@ class datfile:
                 self.tsys[i] = 1000.0 * 1000.0
 
     def make_transformata_furiata(self):
-        # -- ekstrahujemy odpowiednie tablice --
-        self.tab_to_fft = []
-        for i in range(len(self.auto_prepared_to_fft)):
-            self.tab_to_fft.append(self.auto_prepared_to_fft[i])
-        self.tab_to_fft = asarray(self.tab_to_fft)
+
         # -- wykonujemy transformatę furiata --
         self.spectr_bbc = []
         for i in range(len(self.auto)):
-            self.spectr_bbc.append(fft(self.tab_to_fft[i]).real)
+            self.spectr_bbc.append(fft(self.auto_prepared_to_fft[i]).real)
         self.spectr_bbc = asarray(self.spectr_bbc)
 
         # -- ekstra*ujemy odpowiednie części --
@@ -704,13 +734,13 @@ for i in range(len(tab)):
 print("-----------------------------------------")
 
 # -- zapisujemy --
-# plik wynikowy z zapisanymi danymi
+#plik wynikowy z zapisanymi danymi
 print("-----> Saving to file WYNIK.DAT")
 fle = open("WYNIK.DAT", "w+")
 
 # pętla zapisująca 
-for i in range(len(tab)):
-    for ee in range(len(tab[i].auto)):
+for i in range(len(tab)): # i to skany (zazwyczaj 0 - 19)
+    for ee in range(len(tab[i].auto)): # ee to BBC (zazwyczaj 0 - 3) 
         # ---- nagłówek ----
         fle.write("???\n")
         fle.write(repr(tab[i].rah).rjust(6) + repr(tab[i].ram).rjust(6) + repr(tab[i].ras).rjust(6) + repr(tab[i].decd).rjust(6) + repr(tab[i].decm).rjust(6) + repr(tab[i].decs).rjust(6) +"\n" )
@@ -727,7 +757,7 @@ for i in range(len(tab)):
         fle.write("***" + "\n")
         fle.write(repr(int(tab[i].UTh)).rjust(8) + repr(int(tab[i].UTm)).rjust(8) + repr(int(tab[i].UTs)).rjust(8) + repr(int(tab[i].INT)).rjust(8) + "\n")
         # --- dane ----
-        for j in range(len(tab[i].spectr_bbc_final[ee])):
+        for j in range(len(tab[i].spectr_bbc_final[ee])): # j to kanały (zazwyczaj 0 - 2047)
             # sprawdzamy, czy to co próbujemy zapisać nie jest aby za długie
             if len(repr( round(tab[i].spectr_bbc_final[ee][j] ,1))) < 9:
                 # jeśli tak, zapisujemy
@@ -742,5 +772,6 @@ for i in range(len(tab)):
 
 # -- zamykamy plik --
 fle.close()
+
 print("-----> Completed succesfully. Ending")
 print("-----------------------------------------")
