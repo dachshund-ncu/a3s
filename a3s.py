@@ -125,7 +125,24 @@ def Erf(x):
     t = 1.0 / (1+0.3275911*x)
     erf= 1.0 - t*(0.254829592 + t*(-0.284496736 + t*(1.421413741 + t*(-1.453152027 + t*1.061405429))))*exp(-x**2)
     return erf
+
+# --- metoda wczytująca listę ---
+def read_list_of_files(list_filename):
+    # -- otwieramy --
+    d = open(list_filename, "r+")
+    a = d.readlines()
+    d.close()
+    # ---------------
+    # -- czytamy pliki --
+    flenames = []
+    for i in range(len(a)):
+        tmp = a[i].split()
+        flenames.append(tmp[0])
+    # -------------------
+    # -- zwracamy tablicę z nazwami plików --
+    return flenames
 # ------------------------------------------------------
+
 
 # -- deklarujemy klasę pliku .DAT --
 class datfile:
@@ -522,8 +539,8 @@ class datfile:
             # zapełniamy je
             for i in range(0, int(self.NN / 2)): # iteruje po kanałach bbc
                 # -- fazy do rotacji widma --
-                sin_phase = sin( (i) * self.fr[w])
-                cos_phase = cos( (i) * self.fr[w])
+                sin_phase = sin( (i) * self.fr[w] )
+                cos_phase = cos( (i) * self.fr[w] )
                 
                 self.auto_prepared_to_fft_real[i] = self.auto[w][i+1] * cos_phase # część rzeczywista
                 self.auto_prepared_to_fft_imag[i] = self.auto[w][i+1] * sin_phase # część zespolona
@@ -534,7 +551,6 @@ class datfile:
             # środek zerujemy
             self.auto_prepared_to_fft_real[int(self.NN / 2)] = 0.0
             self.auto_prepared_to_fft_imag[int(self.NN / 2)] = 0.0
-            self.auto_prepared_to_fft_real[0] = 0.99999999985394450
             # konstruujemy naszą tablicę
             self.auto_prepared_to_fft[w].real = self.auto_prepared_to_fft_real
             self.auto_prepared_to_fft[w].imag = self.auto_prepared_to_fft_imag
@@ -606,172 +622,155 @@ class datfile:
     
 # ----------------------------------
 
-
-# ---- powiadomienie powitalne ----
-print("-----------------------------------------")
-print("-----> Welcome to A3S")
-print("-----> A3S is a tool to make FFT from 4096 channel autocorrelator output")
-print("-----> It also shifts line to channel 1024")
-if len(argv) < 2:
+if __name__ == "__main__":
+    # ---- powiadomienie powitalne ----
     print("-----------------------------------------")
-    print("-----> WARNING: no list provided!")
-    print("-----> USAGE: a3s.py list_of_.DAT_files")
-    print("-----> You need to pass list in the argument!")
-    print("-----> Exiting...")
-    print("-----------------------------------------")
-    exit()
+    print("-----> Welcome to A3S")
+    print("-----> A3S is a tool to make FFT from 4096 channel autocorrelator output")
+    print("-----> It also shifts line to channel 1024")
+    if len(argv) < 2:
+        print("-----------------------------------------")
+        print("-----> WARNING: no list provided!")
+        print("-----> USAGE: a3s.py list_of_.DAT_files")
+        print("-----> You need to pass list in the argument!")
+        print("-----> Exiting...")
+        print("-----------------------------------------")
+        exit()
 
-# --- metoda wczytująca listę ---
-def read_list_of_files(list_filename):
-    # -- otwieramy --
-    d = open(list_filename, "r+")
-    a = d.readlines()
-    d.close()
-    # ---------------
-    # -- czytamy pliki --
-    flenames = []
-    for i in range(len(a)):
-        tmp = a[i].split()
-        flenames.append(tmp[0])
-    # -------------------
-    # -- zwracamy tablicę z nazwami plików --
-    return flenames
+    # ----- zbiór stałych na początek programu -----
+    dl_geog = 18.56406 # stopni
+    szer_geog = 53.09546 # stopni
+    height = 133.61 # wysokość n.p.m.
+    NN = 8192 # ilość kanałów x 2
+    # ----------------------------------------------
 
-# ----- zbiór stałych na początek programu -----
-c = 2.99792458e+5 # prędkość światła, m/s
-dl_geog = 18.56406 # stopni
-szer_geog = 53.09546 # stopni
-height = 133.61 # wysokość n.p.m.
-NN = 8192 # ilość kanałów x 2
-# ----------------------------------------------
+    # -- tablica z klasami --
+    tab = []    
+    # -- czytamy listę (weźmie to, co podamy w argumencie programu) --
+    list_of_files = read_list_of_files(argv[1])
+    # -- tworzymy klasy --
+    for i in range(len(list_of_files)):
+        tab.append(datfile(list_of_files[i]))
+    # --------------------
 
-# -- tablica z klasami --
-tab = []    
-# -- czytamy listę (weźmie to, co podamy w argumencie programu) --
-list_of_files = read_list_of_files(argv[1])
-# -- tworzymy klasy --
-for i in range(len(list_of_files)):
-    tab.append(datfile(list_of_files[i]))
-# --------------------
+    # ---- zarządzanie współrzędnymi ----
+    # -- deklarujemy obiekt sky coord, w którym będą zawarte współrzędne --
+    # -- WAŻNE: współrzędne są wzięte z PIERWSZEGO skanu --
+    source_J2000 = SkyCoord(ra=tab[0].RA*u.hourangle, dec=tab[0].DEC*u.degree, frame=FK5, equinox='J2000')
 
-# ---- zarządzanie współrzędnymi ----
-# -- deklarujemy obiekt sky coord, w którym będą zawarte współrzędne --
-# -- WAŻNE: współrzędne są wzięte z PIERWSZEGO skanu --
-source_J2000 = SkyCoord(ra=tab[0].RA*u.hourangle, dec=tab[0].DEC*u.degree, frame=FK5, equinox='J2000')
-
-# ------------- PRECESJA I NUTACJA --------------------
-# -- do precesji deklarujemy nowy frame FK5 z epoką pierwszego skanu --
-frame_now = FK5(equinox="J" + str(tab[0].decimalyear))
-# -- by wykonać precesję i nutację wystarczy teraz: 
-source_JNOW = source_J2000.transform_to(frame_now)
-# będziemy robić precesję w głównej pętli
-# ------------------------------------------------------
-
-# ---------- WSPÓŁRZĘDNE GALAKTYCZNE -------------------
-l_ga = source_JNOW.galactic
-source_L = (l_ga.l*u.degree).value
-source_B = (l_ga.b*u.degree).value
-source_ld = int(source_L)
-source_lm = int(60.0 * (source_L % 1))
-source_bd = int(source_B)
-source_bm = int(60.0 * (source_B % 1))
-# ------------------------------------------------------
-
-# --- printowanie komunikatu ---
-print("-----> Loaded", len(tab), "scans")
-print("-----------------------------------------")
-# --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
-for i in range(len(tab)):
-
-    # ------------- PRECESJA I NUTACJA ---------------
-    # -- wykonujemy precesję na czas obecnego skanu --
-    # -- do precesji deklarujemy nowy frame FK5 z epoką aktualnego skanu --
-    frame_now = FK5(equinox="J" + str(tab[i].decimalyear))
+    # ------------- PRECESJA I NUTACJA --------------------
+    # -- do precesji deklarujemy nowy frame FK5 z epoką pierwszego skanu --
+    frame_now = FK5(equinox="J" + str(tab[0].decimalyear))
     # -- by wykonać precesję i nutację wystarczy teraz: 
     source_JNOW = source_J2000.transform_to(frame_now)
-    # -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
-    source_JNOW_RA = (source_JNOW.ra*u.degree).value
-    source_JNOW_DEC = (source_JNOW.dec*u.degree).value
-    # ------------------------------------------------
+    # będziemy robić precesję w głównej pętli
+    # ------------------------------------------------------
 
-    # -- korekta funkcji autokorelacji --
-    # ze względu na 2 i 3 poziomową kwantyzację etc.
-    tab[i].correct_auto(scannr = i+1)
+    # ---------- WSPÓŁRZĘDNE GALAKTYCZNE -------------------
+    l_ga = source_JNOW.galactic
+    source_L = (l_ga.l*u.degree).value
+    source_B = (l_ga.b*u.degree).value
+    source_ld = int(source_L)
+    source_lm = int(60.0 * (source_L % 1))
+    source_bd = int(source_B)
+    source_bm = int(60.0 * (source_B % 1))
+    # ------------------------------------------------------
 
-    # -- wygładzanie Hanninga --
-    tab[i].hanning_smooth()
+    # --- printowanie komunikatu ---
+    print("-----> Loaded", len(tab), "scans")
+    print("-----------------------------------------")
+    # --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
+    for i in range(len(tab)):
 
-    # -- korekta na ruch ziemi --
-    # obejmuje ona: 
-    # 1. ruch wokół własnej osi
-    # 2. ruch obiegowy wokół barycentrum US
-    # 3. ruch względem lokalnej grupy gwiazd (LSR)
-    # dwa pierwsze punkty są zrealizowane z dokładnością do ~ 1 cm/s
-    # trzeci opiera się na metodzie, przepisanej żywcem z oryginalnego A2S
-    # jej dokładność budzi pewne wątpliwości
-    # argumenty doppset: 1: RA po precesji (deg), 2: DEC po precesji (deg)
-    # 3: szerokość geograficzna (deg) 4: długość geogradiczna (deg, E > 0, W < 0)
-    # 5: wysokość nad geoidą zi-emii
-    # doppset wykonuje również rotację f. autokorelacji
-    tab[i].doppset(source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height)
-    print("-----> scan %d: line shifted by %4.3f channels" % (i+1, round(tab[i].fcBBC[0],3)))
+        # ------------- PRECESJA I NUTACJA ---------------
+        # -- wykonujemy precesję na czas obecnego skanu --
+        # -- do precesji deklarujemy nowy frame FK5 z epoką aktualnego skanu --
+        frame_now = FK5(equinox="J" + str(tab[i].decimalyear))
+        # -- by wykonać precesję i nutację wystarczy teraz: 
+        source_JNOW = source_J2000.transform_to(frame_now)
+        # -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
+        source_JNOW_RA = (source_JNOW.ra*u.degree).value
+        source_JNOW_DEC = (source_JNOW.dec*u.degree).value
+        # ------------------------------------------------
 
-    # -- kilka statystyk liczymy --
-    tab[i].do_statistics()
-    
-    # -- skalujemy tsys w mK --
-    tab[i].scale_tsys_to_mK()
+        # -- korekta funkcji autokorelacji --
+        # ze względu na 2 i 3 poziomową kwantyzację etc.
+        tab[i].correct_auto(scannr = i+1)
 
-    # --- PRINTOWANIE ---
-    # zakomentowane, normalnie tego nie potrzebujemy
-    #tab[i].extended_print()
+        # -- wygładzanie Hanninga --
+        tab[i].hanning_smooth()
 
-    # -- robimy transformatę fouriera --
-    tab[i].make_transformata_furiata()
+        # -- korekta na ruch ziemi --
+        # obejmuje ona: 
+        # 1. ruch wokół własnej osi
+        # 2. ruch obiegowy wokół barycentrum US
+        # 3. ruch względem lokalnej grupy gwiazd (LSR)
+        # dwa pierwsze punkty są zrealizowane z dokładnością do ~ 1 cm/s
+        # trzeci opiera się na metodzie, przepisanej żywcem z oryginalnego A2S
+        # jej dokładność budzi pewne wątpliwości
+        # argumenty doppset: 1: RA po precesji (deg), 2: DEC po precesji (deg)
+        # 3: szerokość geograficzna (deg) 4: długość geogradiczna (deg, E > 0, W < 0)
+        # 5: wysokość nad geoidą zi-emii
+        # doppset wykonuje również rotację f. autokorelacji
+        tab[i].doppset(source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height)
+        print("-----> scan %d: line shifted by %4.3f channels" % (i+1, round(tab[i].fcBBC[0],3)))
 
-    # -- kalibrujemy tsys --
-    tab[i].calibrate_in_tsys()
-print("-----------------------------------------")
+        # -- kilka statystyk liczymy --
+        tab[i].do_statistics()
+        
+        # -- skalujemy tsys w mK --
+        tab[i].scale_tsys_to_mK()
 
-# -- zapisujemy --
-#plik wynikowy z zapisanymi danymi
-print("-----> Saving to file WYNIK.DAT")
-fle = open("WYNIK.DAT", "w+")
+        # --- PRINTOWANIE ---
+        # zakomentowane, normalnie tego nie potrzebujemy
+        #tab[i].extended_print()
 
-# pętla zapisująca 
-for i in range(len(tab)): # i to skany (zazwyczaj 0 - 19)
-    for ee in range(len(tab[i].auto)): # ee to BBC (zazwyczaj 0 - 3) 
-        # ---- nagłówek ----
-        fle.write("???\n")
-        fle.write(repr(tab[i].rah).rjust(6) + repr(tab[i].ram).rjust(6) + repr(tab[i].ras).rjust(6) + repr(tab[i].decd).rjust(6) + repr(tab[i].decm).rjust(6) + repr(tab[i].decs).rjust(6) +"\n" )
-        fle.write(repr(source_ld).rjust(6) + repr(source_lm).rjust(6) + repr(source_bd).rjust(6) + repr(source_bm).rjust(6) + "\n")
-        fle.write(repr(tab[i].azd).rjust(6) + repr(tab[i].azm).rjust(6) + repr(tab[i].eld).rjust(6) + repr(tab[i].elm).rjust(6) + "\n" )
-        fle.write(tab[i].datestring.rjust(10) + "\n")
-        fle.write(repr(int(tab[i].STh)).rjust(6) + repr(int(tab[i].STm)).rjust(6) + repr(int(tab[i].STs)).rjust(6) + "\n")
-        fle.write(repr(round(tab[i].tsys[0] / 1000.0, 3)).rjust(8)  + "\n")
-        fle.write("0".rjust(6) + "\n")
-        fle.write(repr(ee).rjust(6) + "\n")
-        fle.write("$$$\n")
-        fle.write(repr(len(tab[i].spectr_bbc_final[ee])).rjust(12) + repr(int(tab[i].bw[ee])).rjust(15) + repr(0.25).rjust(15) + repr(tab[i].vlsr[ee]).rjust(11) + repr(tab[i].rest[ee]).rjust(18) + "\n")
-        fle.write(tab[i].sourcename + "\n")
-        fle.write("***" + "\n")
-        fle.write(repr(int(tab[i].UTh)).rjust(8) + repr(int(tab[i].UTm)).rjust(8) + repr(int(tab[i].UTs)).rjust(8) + repr(int(tab[i].INT)).rjust(8) + "\n")
-        # --- dane ----
-        for j in range(len(tab[i].spectr_bbc_final[ee])): # j to kanały (zazwyczaj 0 - 2047)
-            # sprawdzamy, czy to co próbujemy zapisać nie jest aby za długie
-            if len(repr( round(tab[i].spectr_bbc_final[ee][j] ,1))) < 9:
-                # jeśli tak, zapisujemy
-                fle.write( repr( round(tab[i].spectr_bbc_final[ee][j] ,1) ).rjust(10) )
-            else:
-                # jak nie... to może sp......
-                fle.write( repr(000.0).rjust(10) )
-            # co 8 wpisów przechodzimy do nowej linii
-            if (j + 1) % 8 == 0:
-                fle.write("\n")
-    # ---------------------------------------------------
+        # -- robimy transformatę fouriera --
+        tab[i].make_transformata_furiata()
 
-# -- zamykamy plik --
-fle.close()
+        # -- kalibrujemy tsys --
+        tab[i].calibrate_in_tsys()
+    print("-----------------------------------------")
 
-print("-----> Completed succesfully. Ending")
-print("-----------------------------------------")
+    # -- zapisujemy --
+    #plik wynikowy z zapisanymi danymi
+    print("-----> Saving to file WYNIK.DAT")
+    fle = open("WYNIK.DAT", "w+")
+
+    # pętla zapisująca 
+    for i in range(len(tab)): # i to skany (zazwyczaj 0 - 19)
+        for ee in range(len(tab[i].auto)): # ee to BBC (zazwyczaj 0 - 3) 
+            # ---- nagłówek ----
+            fle.write("???\n")
+            fle.write(repr(tab[i].rah).rjust(6) + repr(tab[i].ram).rjust(6) + repr(tab[i].ras).rjust(6) + repr(tab[i].decd).rjust(6) + repr(tab[i].decm).rjust(6) + repr(tab[i].decs).rjust(6) +"\n" )
+            fle.write(repr(source_ld).rjust(6) + repr(source_lm).rjust(6) + repr(source_bd).rjust(6) + repr(source_bm).rjust(6) + "\n")
+            fle.write(repr(tab[i].azd).rjust(6) + repr(tab[i].azm).rjust(6) + repr(tab[i].eld).rjust(6) + repr(tab[i].elm).rjust(6) + "\n" )
+            fle.write(tab[i].datestring.rjust(10) + "\n")
+            fle.write(repr(int(tab[i].STh)).rjust(6) + repr(int(tab[i].STm)).rjust(6) + repr(int(tab[i].STs)).rjust(6) + "\n")
+            fle.write(repr(round(tab[i].tsys[0] / 1000.0, 3)).rjust(8)  + "\n")
+            fle.write("0".rjust(6) + "\n")
+            fle.write(repr(ee).rjust(6) + "\n")
+            fle.write("$$$\n")
+            fle.write(repr(len(tab[i].spectr_bbc_final[ee])).rjust(12) + repr(int(tab[i].bw[ee])).rjust(15) + repr(0.25).rjust(15) + repr(tab[i].vlsr[ee]).rjust(11) + repr(tab[i].rest[ee]).rjust(18) + "\n")
+            fle.write(tab[i].sourcename + "\n")
+            fle.write("***" + "\n")
+            fle.write(repr(int(tab[i].UTh)).rjust(8) + repr(int(tab[i].UTm)).rjust(8) + repr(int(tab[i].UTs)).rjust(8) + repr(int(tab[i].INT)).rjust(8) + "\n")
+            # --- dane ----
+            for j in range(len(tab[i].spectr_bbc_final[ee])): # j to kanały (zazwyczaj 0 - 2047)
+                # sprawdzamy, czy to co próbujemy zapisać nie jest aby za długie
+                if len(repr( round(tab[i].spectr_bbc_final[ee][j] ,1))) < 9:
+                    # jeśli tak, zapisujemy
+                    fle.write( repr( round(tab[i].spectr_bbc_final[ee][j] ,1) ).rjust(10) )
+                else:
+                    # jak nie... to może sp......
+                    fle.write( repr(000.0).rjust(10) )
+                # co 8 wpisów przechodzimy do nowej linii
+                if (j + 1) % 8 == 0:
+                    fle.write("\n")
+        # ---------------------------------------------------
+
+    # -- zamykamy plik --
+    fle.close()
+
+    print("-----> Completed succesfully. Ending")
+    print("-----------------------------------------")
