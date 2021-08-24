@@ -336,11 +336,14 @@ class scan:
                 cosine = cos(pi * (j-1) / self.NN )**2.0
                 self.auto[i][j] = self.auto[i][j] * cosine
     
+    # argumenty: RA po prrecesji(decimal h), DEC po precesji (decimal deg), szerokość geograficzna(decimal deg), długość geograficzna(decimal deg), wysokość nad geoidą (m)
     def doppset(self, source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height):
         # -------------- PRĘDKOŚCI --------------------
         # -- liczymy prędkość wokół barycentrum + rotacja wokół własnej osi --
         # rzutowane na źródło
-        self.baryvel, hjd = helcorr(obs_long = dl_geog, obs_lat = szer_geog, obs_alt = height, ra2000 = self.RA*15, dec2000 = self.DEC, jd=self.tee.jd)
+        # metoda wykonuje precesję sama z siebie, toteż podajemy współrzędne na epokę 2000 przed precesją
+        self.baryvel, hjd = helcorr(obs_long = dl_geog, obs_lat = szer_geog, obs_alt = height, ra2000 = self.RA*15, dec2000 = self.DEC, jd=self.tee.jd) #self.tee to obiekt czasu (astropy.time)
+        
         # -- liczymy prędkość w lokalnym standardzie odniesienia --
         # rzutowane na źródło
         self.lsrvel = self.__lsr_motion(source_JNOW_RA, source_JNOW_DEC, self.decimalyear)
@@ -349,6 +352,7 @@ class scan:
         self.Vdop = self.baryvel + self.lsrvel
         # ----------------------------------------------
 
+        
         # --------------- ROTACJA WIDMA ----------------
         # sprawdzamy, czy nasze rest jest w tablicy z template
         for i in range(len(self.auto)): # iteracja po indeksach
@@ -358,7 +362,7 @@ class scan:
                 if int(self.rest[i]) == int(tmp_ind):
                     self.rest[i] = tmp_ind
                     break
-        # ----------------------------------------------
+        
 
         # - deklarujemy tablice -
         self.fvideo = zeros(4)
@@ -428,12 +432,9 @@ class scan:
         self.ACF0 = self.r0
 
         # liczymy niepewności
-        self.V_sigma = []
-        self.V_sigma.append(self.__clipLevel(self.r0[0]))
-        self.V_sigma.append(self.__clipLevel(self.r0[1]))
-        self.V_sigma.append(self.__clipLevel(self.r0[2]))
-        self.V_sigma.append(self.__clipLevel(self.r0[3]))
-        self.V_sigma = asarray(self.V_sigma)
+        self.V_sigma = zeros(4)
+        for i in range(len(self.auto)):
+            self.V_sigma[i] = self.__clipLevel(self.r0[i])
     
     # -- skaluje widmo w mili kelwinach --
     def scale_tsys_to_mK(self):
@@ -446,20 +447,23 @@ class scan:
     def make_transformata_furiata(self):
 
         # -- wykonujemy transformatę furiata --
-        self.spectr_bbc = []
+        # deklarujemy tablice, by oszczędzić czas
+        self.spectr_bbc = zeros((4, self.NN))
+        self.spectr_bbc_final = zeros((4,self.NN / 2))
+        # pętla po BBC
         for i in range(len(self.auto)):
-            tmp_spectr = fft(self.auto_prepared_to_fft[i]).real
-            self.spectr_bbc.append(tmp_spectr)
-        self.spectr_bbc = asarray(self.spectr_bbc)
-        # -- ekstra*ujemy odpowiednie części --
-        self.spectr_bbc_final = []
-        for i in range(len(self.auto)):
-            # -- sprawdzamy, czy berzemy dolne czy górne:
+
+            # przywołujemy numpy.fft.fft by policzyć transformatę
+            self.spectr_bbc[i] = fft(self.auto_prepared_to_fft[i]).real
+
+            # sprawdzamy, czy należy wziąć widmo dolne czy górne:
+            # to zapewne zależy od lustrzanki (HIGH vs LOW)
+            # najlepwniej zawsze będzie widmo górne brane
+            # jako iż lustrzanka LOW była tylko w spektroskopii L
             if self.fvideo[i] > 0: # jak tak, to górne
-                self.spectr_bbc_final.append(self.spectr_bbc[i][int(self.NN / 2):])
+                self.spectr_bbc_final[i] = self.spectr_bbc[i][int(self.NN / 2):]
             else: # jak nie, to dolne
-                self.spectr_bbc_final.append(self.spectr_bbc[i][:int(self.NN / 2)])
-        self.spectr_bbc_final = asarray(self.spectr_bbc_final)
+                self.spectr_bbc_final[i] = self.spectr_bbc[i][:int(self.NN / 2)]
 
     # -- kalibruje dane w tsys --
     def calibrate_in_tsys(self):
@@ -489,6 +493,7 @@ class scan:
     # -- rzutowaną na kierunek, w którym jest źródełko --
     # -- RA i DEC podawane muszą być w STOPNIACH --
     def __lsr_motion(self, ra,dec,decimalyear):
+        
         # -- zacztnamy --
         vSun0 = 20.0
 
