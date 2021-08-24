@@ -406,7 +406,7 @@ class scan:
         self.fcBBC = self.fc
 
         # -- przygotowujemy dane do fft --
-        self.fr = - self.fc * 2.0 * pi / self.NN
+        self.fr = - (self.fc+1) * 2.0 * pi / self.NN
 
         # -- przygotowujemy tablicę do FFT --
         self.auto_prepared_to_fft = zeros((4, self.NN), dtype=complex128) # docelowa
@@ -449,7 +449,7 @@ class scan:
         # -- wykonujemy transformatę furiata --
         # deklarujemy tablice, by oszczędzić czas
         self.spectr_bbc = zeros((4, self.NN))
-        self.spectr_bbc_final = zeros((4,self.NN / 2))
+        self.spectr_bbc_final = zeros((4,int(self.NN / 2)))
         # pętla po BBC
         for i in range(len(self.auto)):
 
