@@ -1,0 +1,7 @@
+astropy==4.3.1
+mpmath==1.2.1
+numpy==1.21.2
+PyAstronomy==0.16.0
+pyerfa==2.0.0
+scipy==1.7.1
+six==1.16.0

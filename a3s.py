@@ -1,13 +1,26 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+'''
+Program A3S
+Version: 1.001 (24.09.2021)
+Author: Michał Durjasz
+
+Based on A2S by P. Wolak
+
+Usage:
+python3 a3s.py list_of_dat_files
+
+Outputs spectra to "WYNIK.DAT" file
+'''
+
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
+from numpy import exp, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, complex128
 from numpy.fft import fft
 # -----------
 # -- math i mpmath --
-from math import copysign, floor, ceil
+from math import copysign
 from cmath import sqrt as math_sqrt
 from mpmath import nint
 # -----------
