@@ -3,7 +3,7 @@
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
+from numpy import exp, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, nan, hanning, complex128
 from numpy.fft import fft
 # -----------
 # -- math i mpmath --
@@ -23,129 +23,8 @@ from sys import argv, exit
 from PyAstronomy.pyasl import helcorr
 # ----------------
 
-# --------- ZESTAWY GLOBALNYCH FUNKCJI --------------
-# ----------------------------------
-# -- oblicza prędkość słońca względem LSR (local standard of rest) --
-# -- rzutowaną na kierunek, w którym jest źródełko --
-# -- RA i DEC podawane muszą być w STOPNIACH --
-def lsr_motion(ra,dec,decimalyear):
-    # -- zacztnamy --
-    vSun0 = 20.0
-
-    # -- współrzędne apeksu słońca z 1900 --
-    ras = 18.0 * pi / 12.0 # radiany
-    decs = 30.0 * pi / 180.0 # radiany
-    # -- obiekt skycoord - apeks słońca w roku 1900 --
-    sunc = SkyCoord(ras*u.rad, decs*u.rad, frame=FK5, equinox="B1900")
-    # deklarujemy nowy frame z epoką jak nasze obserwacje
-    sunc_now = FK5(equinox="J" + str(decimalyear))
-    # przechodzimy między frame'ami
-    sunc_new = sunc.transform_to(sunc_now)
-    # ekstra*ujemy współrzędne i zamieniamy na radiany
-    dec_new = radians((sunc_new.dec*u.degree).value)
-    ra_new = radians((sunc_new.ra*u.degree).value)
-    
-    # -- zamieniamy ra i dec na radiany --
-    ra = radians(ra)
-    dec = radians(dec)
-    # -- funkcje na przekazanych współrzędnych
-    cdec = cos(dec)
-    sdec = sin(dec)
-
-    # -- obliczamy prędkość słońca względem local standard of rest --
-    # -- w kierunku ra i dec --
-    vSun = vSun0 * ( sin(dec_new) * sdec + cos(dec_new) * cdec * cos(ra-ra_new))
-    return vSun
-    # -------------
-
-
-# -- metoda: correctACF --
-# nakłada na funkcję autokorelacji krektę na 2 i 3 - poziomową kwantyzację
-# przyjmuje w argumencie pojedynczy punkt
-def correctACF(autof, r0, rMean):
-    # oblicza korekcję do funkcji autokorelacji dla kilku przypadków
-    # 3- i 2- poziomowego autokorelatora
-    # autof - funkcja autokorelacji (jeden punkt dokładnie)
-    # r0 - współczynnik korelacji dla zerowego zapóźnienia
-    # bias0 - średni współczynnik dla ogona funkcji autokorelacji (większe zapóźnienia)
-    if rMean <= 1e-5:
-        # -- limituemy funkcję autokorelacji między 0 i 1
-        # tak powinna być znormalizowana (1 w zerowym zapóźnieniu)
-        r = min([1.0, abs(autof)])
-        if r0 > 0 and r0 < 0.3:
-            r = r * 0.0574331 # tak jest w a2s
-            rho= r*(60.50861 + r*(-1711.23607 + r*(26305.13517 - r*167213.89458)))/0.99462695104383
-            correct_auto = copysign(rho, autof)
-            return correct_auto
-        elif r0 > 0.3 and r0 < 0.9:
-            # trzypoziomoy autokorelator
-            r = r * 0.548506
-            rho = (r*(2.214 + r*(0.85701 + r*(-7.67838 + r*(22.42186 - r*24.896)))))/0.998609598617374
-            correct_auto = copysign(rho, autof)
-            return correct_auto
-        elif r0 > 0.9:
-            rho = sin(1.570796326794897*r)
-            correct_auto = copysign(rho, autof)
-            return correct_auto
-    else:
-        autof2 = autof **2.0
-        if (abs(autof)) < 0.5:
-            fac = 4.167810515925 - r0*7.8518131881775
-            a = -0.0007292201019684441 - 0.0005671518541787936*fac
-            b =  1.2358980680949918 + 0.03931789097196692*fac
-            c = -0.11565632506887912 + 0.08747950965746415*fac
-            d =  0.01573239969731158 - 0.06572872697836053*fac
-            correct_auto = a + (b + (c + d*autof2)*autof2)*autof
-            return correct_auto
-        elif (autof > 0.5):
-            correct_auto = -1.1568973833585783 + 10.27012449073475*autof - 27.537554958512125*autof2 + 40.54762923890069*autof**3 - 28.758995213769058*autof2**2 + 7.635693826008257*autof**5 + 0.218044850 * (0.53080867 - r0) * cos(3.12416*(autof-0.49721))
-            return correct_auto
-        else:
-            correct_auto = -0.0007466171982634772 + autof*(1.2660000881004778 + autof2*(-0.4237089538779861 + autof2*(1.0910718879007775 + autof2*(-1.452946181286572 + autof2*0.520334578982730)))) + 0.22613222 * (0.53080867 - r0) * cos(3.11635*(autof-0.49595))
-            return correct_auto
-    
-
-# -- metoda: Clip level --
-# -- skopiowana z oryginalnego A2S --
-def ClipLevel(ratio):
-    Err = 1 - ratio
-    x = 0
-    for i in range(100):
-        dE = Erf(x + 0.01) - Erf(x)
-        if dE == 0.0:
-            return inf
-        x = x + (Err-Erf(x)) * 0.01 / dE
-        if abs(Err-Erf(x)) < 0.0001:
-            return sqrt(2.0) * x
-        else:
-            continue
-
-# -- pomocnicza metoda do Clip Level --
-def Erf(x):
-    t = 1.0 / (1+0.3275911*x)
-    erf= 1.0 - t*(0.254829592 + t*(-0.284496736 + t*(1.421413741 + t*(-1.453152027 + t*1.061405429))))*exp(-x**2)
-    return erf
-
-# --- metoda wczytująca listę ---
-def read_list_of_files(list_filename):
-    # -- otwieramy --
-    d = open(list_filename, "r+")
-    a = d.readlines()
-    d.close()
-    # ---------------
-    # -- czytamy pliki --
-    flenames = []
-    for i in range(len(a)):
-        tmp = a[i].split()
-        flenames.append(tmp[0])
-    # -------------------
-    # -- zwracamy tablicę z nazwami plików --
-    return flenames
-# ------------------------------------------------------
-
-
 # -- deklarujemy klasę pliku .DAT --
-class datfile:
+class scan:
 
     # -- metoda inicjująca klasę --
     def __init__(self, filename):
@@ -371,81 +250,71 @@ class datfile:
         # ----- Koniec czytania danych --
 
     def correct_auto(self, scannr = 1):
-        # -- obliczamy średnią z ostatnich 240 kanałów --
-        self.average = []
-        for i in range(len(self.auto)):
-            if mean(self.auto[i][3857:]) == 0.0:
-                pass
-                #print("-------> BBC", i, "corrupted!")
-            # - warto pamiętać, żę "average" może przyjmować wartość równą 0.0! -
-            self.average.append(mean(self.auto[i][3857:]))
-        self.average = asarray(self.average)
+        
+        # deklarujemy na początek tablice numpy
+        self.average = zeros(4)
+        self.auto0tab = zeros(4)
+        self.multiple = zeros(4, dtype=int64)
+        self.Nmax = zeros(4, dtype=int64)
+        self.bias0 = zeros(4)
+        self.zero_lag_auto = zeros(4)
+        self.r0 = zeros(4)
 
-        # -- generujemy tablicę z wartościami z pierwszych pikseli --
-        # które notabene nie są kanałami pomiarowymi i do tego nie służą
-        self.auto0tab = []
+        # pętla po BBC do korekcji funkcji autokorelacji
         for i in range(len(self.auto)):
-            self.auto0tab.append(self.auto[i][0])
-        self.auto0tab = asarray(self.auto0tab)
+            # średnia z ostatnich 240 kanałów
+            self.average[i] = mean(self.auto[i][3857:])
 
-        # -- liczymy prawdziwą ilość "samples accumulated" - cokolwiek to znaczy --
-        # -- liczymy multiple --
-        self.multiple = []
-        for i in range(len(self.auto)):
-            # - zabezpieczamy przed "average" równym 0 -
+            # tabliza z wartościami z pierwszych kanałów
+            # pierwszy kanał na każdym BBC nie jest częścią
+            # funkcji autokorelacji
+            self.auto0tab[i] = self.auto[i][0]
+
+            # obliczamy prawdziwą ilość "samples accumulated"
+            # i zabezpieczamy się przed dzieleniem przez zero
             if self.average[i] == 0.0:
-                self.multiple.append(0)
+                self.multiple[i] = 0
             else:
-                self.multiple.append(int(nint(self.auto0tab[i] / self.average[i])))
-        self.multiple = asarray(self.multiple)
-
-        # -- liczymy Nmax --
-        self.Nmax = []
-        for i in range(len(self.auto)):
-            # - zaabezpieczamy przed "multiple" równym 0 -
-            if self.multiple[i] == 0.0:
-                self.Nmax.append(0)
+                self.multiple[i] = int(nint(self.auto0tab[i] / self.average[i]))
+            
+            # liczymy Nmax
+            # i zabezpieczamy się przed dzieleniem przez zero
+            if self.multiple[i] == 0:
+                self.Nmax[i] = 0
             else:
-                self.Nmax.append(int(self.auto0tab[i] / self.multiple[i]))
-        self.Nmax = asarray(self.Nmax)
-
-        # -- liczymy bias --
-        self.bias0 = []
-        for i in range(len(self.auto)):
-            if self.Nmax[i] == 0.0:
-                self.bias0.append(0.0)
+                self.Nmax[i] = int(self.auto0tab[i] / self.multiple[i])
+            
+            # liczymy bias
+            # i zabezpieczamy się przed dzieleniem przez zero
+            if self.Nmax[i] == 0:
+                self.bias0[i] = 0.0
             else:
-                self.bias0.append(self.average[i] / self.Nmax[i] - 1)
-        self.bias0 = asarray(self.bias0)
+                self.bias0[i] = self.average[i] / self.Nmax[i] - 1
 
-        # -- edytujemy dane, pozbawiając się intencjonalnego biasu --
-        for i in range(len(self.auto)):
+            # pozbywamy się intencjonalnego biasu z funkcji autokorelacji
             self.auto[i] = self.auto[i] - self.Nmax[i]
 
-        # -- tworzymy zabawę, która się nazywa "zero lag autocorrelation" --
-        # -- jest to poprostu wartość funkcji autokorelacji dla zapóźnienia, równego 0 --
-        self.zero_lag_auto = []
-        for i in range(len(self.auto)):
-            self.zero_lag_auto.append(self.auto[i][1])
-        self.zero_lag_auto = asarray(self.zero_lag_auto)
+            # gromadzimy informacje na temat "zero lag autocorrelation"
+            self.zero_lag_auto[i] = self.auto[i][1]
 
-        # -- to samo, tylko znormalizowane --
-        self.r0 = []
-        for i in range(len(self.auto)):
-            if self.Nmax[i] == 0.0:
-                self.r0.append(0.0)
+            # liczymy r0 (do statystyk, chyba nie będzie później używane)
+            # i zabezpieczamy się przed dzieleniem przez zero
+            if self.Nmax[i] == 0:
+                self.r0[i] = 0.0
             else:
-                self.r0.append(self.zero_lag_auto[i] / self.Nmax[i])
-        self.r0 = asarray(self.r0)
+                self.r0[i] = self.zero_lag_auto[i] / self.Nmax[i]
 
-        # -- normalizujemy całą funkcję autokorelacji --
-        for i in range(len(self.auto)):
-            self.auto[i] = self.auto[i] / self.zero_lag_auto[i]
-
-        # -- korekta ze względu na kwantyzację sygnału --
-        for i in range(len(self.auto)):
+            # normalizujemy całą funkcję autokorelacji
+            # i zabezpieczamy się przed dzieleniem przez 0
+            if self.zero_lag_auto[i] == 0.0:
+                self.auto[i] = zeros(len(self.auto[i]))
+            else:
+                self.auto[i] = self.auto[i] / self.zero_lag_auto[i]
+            
+            # teraz korekcja na kwantyzację sygnału
+            # punkt po punkcie
             for j in range(len(self.auto[i])):
-                self.auto[i][j] = correctACF(self.auto[i][j], self.r0[i], self.bias0[i])
+                self.auto[i][j] = self.__correctACF(self.auto[i][j], self.r0[i], self.bias0[i])
 
     def hanning_smooth(self):
         # wygładzamy funkcję autokorelacji
@@ -461,7 +330,7 @@ class datfile:
         self.baryvel, hjd = helcorr(obs_long = dl_geog, obs_lat = szer_geog, obs_alt = height, ra2000 = self.RA*15, dec2000 = self.DEC, jd=self.tee.jd)
         # -- liczymy prędkość w lokalnym standardzie odniesienia --
         # rzutowane na źródło
-        self.lsrvel = lsr_motion(source_JNOW_RA, source_JNOW_DEC, self.decimalyear)
+        self.lsrvel = self.__lsr_motion(source_JNOW_RA, source_JNOW_DEC, self.decimalyear)
 
         # -- prędkość dopplerowska to będzie ich suma --
         self.Vdop = self.baryvel + self.lsrvel
@@ -476,7 +345,15 @@ class datfile:
                 if int(self.rest[i]) == int(tmp_ind):
                     self.rest[i] = tmp_ind
                     break
-        
+        # ----------------------------------------------
+
+        # - deklarujemy tablice -
+        self.fvideo = zeros(4)
+        self.kanalf = zeros(4, dtype=int64)
+        self.q = zeros(4)
+        self.kanalv = zeros(4)
+
+
         # --- rotowanie oryginalnego widma ---
         # przesuwamy linię na 1/4 wstęgi
         self.lo[0] = self.lo[0] - (self.bw[0] / 4)
@@ -484,30 +361,22 @@ class datfile:
         self.fsky = self.rest - self.rest * (-self.Vdop + self.vlsr) / self.c
         # częstotliwość bbc linii widmowej
         self.f_IF = self.fsky - self.lo[0]
-        # częstotliwość video - nie jestem pewien dokładnie po co to 
-        self.fvideo = []
-        for i in range(len(self.auto)):
-            self.fvideo.append(self.f_IF[i] - copysign(self.bbcfr[i], self.f_IF[i]))
-        self.fvideo = asarray(self.fvideo)
-        # kanał, w którym jest linia w domenie częstotliwości
-        # F DUCT
-        self.NNch = len(self.auto[0]) - 1 # nnch jest rodzaju INT
-        self.kanalf = []
-        for i in range(len(self.auto)):
-            self.kanalf.append(int(self.NNch * abs(self.fvideo[i]) / self.bw[i] + 1))
-        self.kanalf = asarray(self.kanalf)
-        # wprowadzamy Q
-        # Q* ilość kanałów = nr.kanału, w którym leży linia
-        self.q = []
-        self.kanalv = []
-        for i in range(len(self.auto)):
+
+        # krótka pętla licząca
+        self.NNch = len(self.auto[0]) - 1 # faktyczna ilość kanałów
+
+        for i in range(len(self.auto)): # po BBC
+            # fvideo
+            self.fvideo[i] = self.f_IF[i] - copysign(self.bbcfr[i], self.f_IF[i])
+            # kanalf (linia w domenie częstotliwości)
+            self.kanalf[i] = int(self.NNch * abs(self.fvideo[i]) / self.bw[i] + 1)
+            # q (położenie linii na wstędze)
             if self.fvideo[i] < 0.0:
                 self.kanalf[i] = self.NNch - self.kanalf[i] + 1
-                self.q.append(-self.fvideo[i] / self.bw[i])
+                self.q[i] = (-self.fvideo[i] / self.bw[i])
             else:
-                self.q.append(1.0 - self.fvideo[i] / self.bw[i] - 1.0 / self.NNch)
-        self.q = asarray(self.q)
-        
+                self.q[i] = 1.0 - self.fvideo[i] / self.bw[i] - 1.0 / self.NNch
+
         # robimy kanalv
         self.kanalv = self.NNch - self.kanalf + 1
         # prędkość w kanale 1024 w spoektrum częstotliwości
@@ -547,10 +416,10 @@ class datfile:
 
         # liczymy niepewności
         self.V_sigma = []
-        self.V_sigma.append(ClipLevel(self.r0[0]))
-        self.V_sigma.append(ClipLevel(self.r0[1]))
-        self.V_sigma.append(ClipLevel(self.r0[2]))
-        self.V_sigma.append(ClipLevel(self.r0[3]))
+        self.V_sigma.append(self.__clipLevel(self.r0[0]))
+        self.V_sigma.append(self.__clipLevel(self.r0[1]))
+        self.V_sigma.append(self.__clipLevel(self.r0[2]))
+        self.V_sigma.append(self.__clipLevel(self.r0[3]))
         self.V_sigma = asarray(self.V_sigma)
     
     # -- skaluje widmo w mili kelwinach --
@@ -601,10 +470,298 @@ class datfile:
         print("rmean (bias of 0) =                 %.4f    %.4f    %.4f    %.4f" % (self.rMean[0], self.rMean[1], self.rMean[2], self.rMean[3]))
         print("Threshold (u=V/rms) =               %.4f    %.4f    %.4f    %.4f" % (self.V_sigma[0], self.V_sigma[1], self.V_sigma[2], self.V_sigma[3]))
     
-# ----------------------------------
+    # ---- POMOCNICZE METODY PRYWATNE ----
+
+    # -- oblicza prędkość słońca względem LSR (local standard of rest) --
+    # -- rzutowaną na kierunek, w którym jest źródełko --
+    # -- RA i DEC podawane muszą być w STOPNIACH --
+    def __lsr_motion(self, ra,dec,decimalyear):
+        # -- zacztnamy --
+        vSun0 = 20.0
+
+        # -- współrzędne apeksu słońca z 1900 --
+        ras = 18.0 * pi / 12.0 # radiany
+        decs = 30.0 * pi / 180.0 # radiany
+        # -- obiekt skycoord - apeks słońca w roku 1900 --
+        sunc = SkyCoord(ras*u.rad, decs*u.rad, frame=FK5, equinox="B1900")
+        # deklarujemy nowy frame z epoką jak nasze obserwacje
+        sunc_now = FK5(equinox="J" + str(decimalyear))
+        # przechodzimy między frame'ami
+        sunc_new = sunc.transform_to(sunc_now)
+        # ekstra*ujemy współrzędne i zamieniamy na radiany
+        dec_new = radians((sunc_new.dec*u.degree).value)
+        ra_new = radians((sunc_new.ra*u.degree).value)
+        
+        # -- zamieniamy ra i dec na radiany --
+        ra = radians(ra)
+        dec = radians(dec)
+        # -- funkcje na przekazanych współrzędnych
+        cdec = cos(dec)
+        sdec = sin(dec)
+
+        # -- obliczamy prędkość słońca względem local standard of rest --
+        # -- w kierunku ra i dec --
+        vSun = vSun0 * ( sin(dec_new) * sdec + cos(dec_new) * cdec * cos(ra-ra_new))
+        return vSun
+        # -------------
+
+    # -- metoda: correctACF --
+    # nakłada na funkcję autokorelacji krektę na 2 i 3 - poziomową kwantyzację
+    # przyjmuje w argumencie pojedynczy punkt
+    def __correctACF(self, autof, r0, rMean):
+        # oblicza korekcję do funkcji autokorelacji dla kilku przypadków
+        # 3- i 2- poziomowego autokorelatora
+        # autof - funkcja autokorelacji (jeden punkt dokładnie)
+        # r0 - współczynnik korelacji dla zerowego zapóźnienia
+        # bias0 - średni współczynnik dla ogona funkcji autokorelacji (większe zapóźnienia)
+        if rMean <= 1e-5:
+            # -- limituemy funkcję autokorelacji między 0 i 1
+            # tak powinna być znormalizowana (1 w zerowym zapóźnieniu)
+            r = min([1.0, abs(autof)])
+            if r0 > 0 and r0 < 0.3:
+                r = r * 0.0574331 # tak jest w a2s
+                rho= r*(60.50861 + r*(-1711.23607 + r*(26305.13517 - r*167213.89458)))/0.99462695104383
+                correct_auto = copysign(rho, autof)
+                return correct_auto
+            elif r0 > 0.3 and r0 < 0.9:
+                # trzypoziomoy autokorelator
+                r = r * 0.548506
+                rho = (r*(2.214 + r*(0.85701 + r*(-7.67838 + r*(22.42186 - r*24.896)))))/0.998609598617374
+                correct_auto = copysign(rho, autof)
+                return correct_auto
+            elif r0 > 0.9:
+                rho = sin(1.570796326794897*r)
+                correct_auto = copysign(rho, autof)
+                return correct_auto
+        else:
+            autof2 = autof **2.0
+            if (abs(autof)) < 0.5:
+                fac = 4.167810515925 - r0*7.8518131881775
+                a = -0.0007292201019684441 - 0.0005671518541787936*fac
+                b =  1.2358980680949918 + 0.03931789097196692*fac
+                c = -0.11565632506887912 + 0.08747950965746415*fac
+                d =  0.01573239969731158 - 0.06572872697836053*fac
+                correct_auto = a + (b + (c + d*autof2)*autof2)*autof
+                return correct_auto
+            elif (autof > 0.5):
+                correct_auto = -1.1568973833585783 + 10.27012449073475*autof - 27.537554958512125*autof2 + 40.54762923890069*autof**3 - 28.758995213769058*autof2**2 + 7.635693826008257*autof**5 + 0.218044850 * (0.53080867 - r0) * cos(3.12416*(autof-0.49721))
+                return correct_auto
+            else:
+                correct_auto = -0.0007466171982634772 + autof*(1.2660000881004778 + autof2*(-0.4237089538779861 + autof2*(1.0910718879007775 + autof2*(-1.452946181286572 + autof2*0.520334578982730)))) + 0.22613222 * (0.53080867 - r0) * cos(3.11635*(autof-0.49595))
+                return correct_auto
+    
+    # -- metoda: Clip level --
+    # -- skopiowana z oryginalnego A2S --
+    def __clipLevel(self, ratio):
+        Err = 1 - ratio
+        x = 0
+        for i in range(100):
+            dE = self.__erf(x + 0.01) - self.__erf(x)
+            if dE == 0.0:
+                return inf
+            x = x + (Err-self.__erf(x)) * 0.01 / dE
+            if abs(Err-self.__erf(x)) < 0.0001:
+                return sqrt(2.0) * x
+            else:
+                continue
+
+    # -- pomocnicza metoda do Clip Level --
+    def __erf(self, x):
+        t = 1.0 / (1+0.3275911*x)
+        erf= 1.0 - t*(0.254829592 + t*(-0.284496736 + t*(1.421413741 + t*(-1.453152027 + t*1.061405429))))*exp(-x**2)
+        return erf
+    # ----------------------------------
+
+class observation:
+
+    def __init__(self, filename):
+        
+        # zapisujemy pierwszy atrybut - nazwa pliku z listą obserwacji
+        self.file_with_list_of_files = filename
+
+        # wczytujemy listę plików
+        self.list_of_filenames = self.read_list_of_files(self.file_with_list_of_files)
+
+        # tablica ze skanami
+        self.scans = self.read_scans(self.list_of_filenames)
+
+        # wstępne ustawienia (współrzędne źródła, obserwatorium, precesja...)
+        self.make_initial_settings()
+
+
+    # --- metoda wczytująca listę ---
+    def read_list_of_files(self, list_filename):
+        # -- otwieramy --
+        d = open(list_filename, "r+")
+        a = d.readlines()
+        d.close()
+        # ---------------
+        # -- czytamy pliki --
+        flenames = []
+        for i in range(len(a)):
+            tmp = a[i].split()
+            flenames.append(tmp[0])
+        # -------------------
+        # -- zwracamy tablicę z nazwami plików --
+        return flenames
+
+    # --- metoda zwracająca listę z klasami "scan" ---
+    def read_scans(self, list_of_filenames):
+
+        # -- tablica z klasami --
+        tab = []    
+
+        # -- tworzymy klasy --
+        for i in range(len(list_of_filenames)):
+            tab.append(scan(list_of_filenames[i]))
+        
+        # -- printujemy powiadomienie --
+        print("-----> Loaded", len(tab), "scans")
+        print("-----------------------------------------")
+        return tab
+
+    def make_initial_settings(self):
+        # zestaw stałych, używanych globalnie w programie
+        # --------------------
+        # LOKALIZACJA OBS. PIWNICE
+        self.dl_geog = 18.56406 # stopni
+        self.szer_geog = 53.09546 # stopni (geodezyjna)
+        self.height = 133.61 # wysokość n.p.m.
+        # ---------------------
+        # ZARZĄDZANIE WSPÓŁRZĘDNYMI
+        # -- deklarujemy obiekt sky coord, w którym będą zawarte współrzędne --
+        # -- WAŻNE: współrzędne są wzięte z PIERWSZEGO skanu --
+        self.source_J2000 = SkyCoord(ra=self.scans[0].RA*u.hourangle, dec=self.scans[0].DEC*u.degree, frame=FK5, equinox='J2000')
+        # PRECESJA I NUTACJA 
+        # -- do precesji deklarujemy nowy frame FK5 z epoką pierwszego skanu --
+        self.frame_now = FK5(equinox="J" + str(self.scans[0].decimalyear))
+        # -- by wykonać precesję i nutację wystarczy teraz: 
+        self.source_JNOW = self.source_J2000.transform_to(self.frame_now)
+        # będziemy robić precesję dla każdego skanu w self.proceed_scans
+        # ------------------------------------------------------
+
+        # ---------- WSPÓŁRZĘDNE GALAKTYCZNE -------------------
+        self.l_ga = self.source_JNOW.galactic
+        self.source_L = (self.l_ga.l*u.degree).value
+        self.source_B = (self.l_ga.b*u.degree).value
+        self.source_ld = int(self.source_L)
+        self.source_lm = int(60.0 * (self.source_L % 1))
+        self.source_bd = int(self.source_B)
+        self.source_bm = int(60.0 * (self.source_B % 1))
+        # ------------------------------------------------------
+
+    def proceed_scans(self):
+
+        # -- głwna super pętla robiąca wszystkie najważniejsze rzeczy --
+        for i in range(len(self.scans)):
+
+            # ------------- PRECESJA I NUTACJA ---------------
+            # -- wykonujemy precesję na czas obecnego skanu --
+            # -- do precesji deklarujemy nowy frame FK5 z epoką aktualnego skanu --
+            frame_now = FK5(equinox="J" + str(self.scans[i].decimalyear))
+            # -- by wykonać precesję i nutację wystarczy teraz: 
+            source_JNOW = self.source_J2000.transform_to(frame_now)
+            # -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
+            source_JNOW_RA = (source_JNOW.ra*u.degree).value
+            source_JNOW_DEC = (source_JNOW.dec*u.degree).value
+            # ------------------------------------------------
+            # rzeczy powyżej są deklarowane lokalnie (bez przedrostka self.)
+            # gdyż będą zmieniane w każdym obrocie pętli a po zakończeniu metody nie będą potrzebne
+            # dlatego zostaną garbage collected
+
+            # -- korekta funkcji autokorelacji --
+            # ze względu na 2 i 3 poziomową kwantyzację etc.
+            self.scans[i].correct_auto(scannr = i+1)
+
+            # -- wygładzanie Hanninga --
+            self.scans[i].hanning_smooth()
+
+            # -- korekta na ruch ziemi --
+            # obejmuje ona: 
+            # 1. ruch wokół własnej osi
+            # 2. ruch obiegowy wokół barycentrum US
+            # 3. ruch względem lokalnej grupy gwiazd (LSR)
+            # dwa pierwsze punkty są zrealizowane z dokładnością do ~ 1 cm/s
+            # trzeci opiera się na metodzie, przepisanej żywcem z oryginalnego A2S
+            # jej dokładność budzi pewne wątpliwości
+            # argumenty doppset: 1: RA po precesji (deg), 2: DEC po precesji (deg)
+            # 3: szerokość geograficzna (deg) 4: długość geogradiczna (deg, E > 0, W < 0)
+            # 5: wysokość nad geoidą zi-emii
+            # doppset wykonuje również rotację f. autokorelacji
+            self.scans[i].doppset(source_JNOW_RA, source_JNOW_DEC, self.szer_geog, self.dl_geog, self.height)
+            print("-----> scan %d: line rotated by %4.3f channels" % (i+1, round(self.scans[i].fcBBC[0],3)))
+
+            # -- kilka statystyk liczymy --
+            self.scans[i].do_statistics()
+            
+            # -- skalujemy tsys w mK --
+            self.scans[i].scale_tsys_to_mK()
+
+            # --- PRINTOWANIE ---
+            # zakomentowane, normalnie tego nie potrzebujemy
+            #tab[i].extended_print()
+
+            # Najważniejsze!
+            # -- robimy transformatę fouriera --
+            self.scans[i].make_transformata_furiata()
+
+            # -- kalibrujemy tsys --
+            self.scans[i].calibrate_in_tsys()
+        
+        # printujemy belkę rozdzielającą
+        print("-----------------------------------------")
+
+    def save_to_file(self, flename="WYNIK.DAT"):
+        
+        # obiekt z zapisywanym plikiem
+        fle = open(flename, "w+")
+
+        # wypisujemy stosowne powiadomienie
+        print("-----> Saving to file", flename)
+
+        # otwieramy pętlę zapisującą
+        # pętla zapisująca 
+        for i in range(len(self.scans)): # i to skany (zazwyczaj 0 - 19)
+            for ee in range(len(self.scans[i].auto)): # ee to BBC (zazwyczaj 0 - 3) 
+                # ---- nagłówek ----
+                fle.write("???\n")
+                fle.write(repr(self.scans[i].rah).rjust(6) + repr(self.scans[i].ram).rjust(6) + repr(self.scans[i].ras).rjust(6) + repr(self.scans[i].decd).rjust(6) + repr(self.scans[i].decm).rjust(6) + repr(self.scans[i].decs).rjust(6) +"\n" )
+                fle.write(repr(self.source_ld).rjust(6) + repr(self.source_lm).rjust(6) + repr(self.source_bd).rjust(6) + repr(self.source_bm).rjust(6) + "\n")
+                print(self.scans[i].azd)
+                fle.write(repr(self.scans[i].azd).rjust(6) + repr(self.scans[i].azm).rjust(6) + repr(self.scans[i].eld).rjust(6) + repr(self.scans[i].elm).rjust(6) + "\n" )
+                fle.write(self.scans[i].datestring.rjust(10) + "\n")
+                fle.write(repr(int(self.scans[i].STh)).rjust(6) + repr(int(self.scans[i].STm)).rjust(6) + repr(int(self.scans[i].STs)).rjust(6) + "\n")
+                fle.write(repr(round(self.scans[i].tsys[0] / 1000.0, 3)).rjust(8)  + "\n")
+                fle.write("0".rjust(6) + "\n")
+                fle.write(repr(ee).rjust(6) + "\n")
+                fle.write("$$$\n")
+                fle.write(repr(len(self.scans[i].spectr_bbc_final[ee])).rjust(12) + repr(int(self.scans[i].bw[ee])).rjust(15) + repr(0.25).rjust(15) + repr(self.scans[i].vlsr[ee]).rjust(11) + repr(self.scans[i].rest[ee]).rjust(18) + "\n")
+                fle.write(self.scans[i].sourcename + "\n")
+                fle.write("***" + "\n")
+                fle.write(repr(int(self.scans[i].UTh)).rjust(8) + repr(int(self.scans[i].UTm)).rjust(8) + repr(int(self.scans[i].UTs)).rjust(8) + repr(int(self.scans[i].INT)).rjust(8) + "\n")
+                # --- dane ----
+                for j in range(len(self.scans[i].spectr_bbc_final[ee])): # j to kanały (zazwyczaj 0 - 2047)
+                    # sprawdzamy, czy to co próbujemy zapisać nie jest aby za długie
+                    if len(repr( round(self.scans[i].spectr_bbc_final[ee][j] ,1))) < 9:
+                        # jeśli tak, zapisujemy
+                        fle.write( repr( round(self.scans[i].spectr_bbc_final[ee][j] ,1) ).rjust(10) )
+                    else:
+                        # jak nie... to może sp......
+                        fle.write( repr(000.0).rjust(10) )
+                    # co 8 wpisów przechodzimy do nowej linii
+                    if (j + 1) % 8 == 0:
+                        fle.write("\n")
+            # ---------------------------------------------------
+
+        # -- zamykamy plik --
+        fle.close()
+        print("-----> Completed succesfully. Ending")
+        print("-----------------------------------------")
+
 
 if __name__ == "__main__":
-    # ---- powiadomienie powitalne ----
+    
+    # powiadomienie powitalne 
     print("-----------------------------------------")
     print("-----> Welcome to A3S")
     print("-----> A3S is a tool to make FFT from 4096 channel autocorrelator output")
@@ -618,140 +775,13 @@ if __name__ == "__main__":
         print("-----------------------------------------")
         exit()
 
-    # ----- zbiór stałych na początek programu -----
-    dl_geog = 18.56406 # stopni
-    szer_geog = 53.09546 # stopni
-    height = 133.61 # wysokość n.p.m.
-    NN = 8192 # ilość kanałów x 2
-    # ----------------------------------------------
+    # tworzymy obiekt z listą "observation"
+    obs = observation(argv[1])
 
-    # -- tablica z klasami --
-    tab = []    
-    # -- czytamy listę (weźmie to, co podamy w argumencie programu) --
-    list_of_files = read_list_of_files(argv[1])
-    # -- tworzymy klasy --
-    for i in range(len(list_of_files)):
-        tab.append(datfile(list_of_files[i]))
-    # --------------------
+    # proceedujemy skany
+    obs.proceed_scans()
 
-    # ---- zarządzanie współrzędnymi ----
-    # -- deklarujemy obiekt sky coord, w którym będą zawarte współrzędne --
-    # -- WAŻNE: współrzędne są wzięte z PIERWSZEGO skanu --
-    source_J2000 = SkyCoord(ra=tab[0].RA*u.hourangle, dec=tab[0].DEC*u.degree, frame=FK5, equinox='J2000')
+    # zapisujemy zmodyfikowane skany
+    obs.save_to_file()
 
-    # ------------- PRECESJA I NUTACJA --------------------
-    # -- do precesji deklarujemy nowy frame FK5 z epoką pierwszego skanu --
-    frame_now = FK5(equinox="J" + str(tab[0].decimalyear))
-    # -- by wykonać precesję i nutację wystarczy teraz: 
-    source_JNOW = source_J2000.transform_to(frame_now)
-    # będziemy robić precesję w głównej pętli
-    # ------------------------------------------------------
-
-    # ---------- WSPÓŁRZĘDNE GALAKTYCZNE -------------------
-    l_ga = source_JNOW.galactic
-    source_L = (l_ga.l*u.degree).value
-    source_B = (l_ga.b*u.degree).value
-    source_ld = int(source_L)
-    source_lm = int(60.0 * (source_L % 1))
-    source_bd = int(source_B)
-    source_bm = int(60.0 * (source_B % 1))
-    # ------------------------------------------------------
-
-    # --- printowanie komunikatu ---
-    print("-----> Loaded", len(tab), "scans")
-    print("-----------------------------------------")
-    # --- zrzynane z A2S kroki, mające na celu doprowadzić nas do końcowego widma ---
-    for i in range(len(tab)):
-
-        # ------------- PRECESJA I NUTACJA ---------------
-        # -- wykonujemy precesję na czas obecnego skanu --
-        # -- do precesji deklarujemy nowy frame FK5 z epoką aktualnego skanu --
-        frame_now = FK5(equinox="J" + str(tab[i].decimalyear))
-        # -- by wykonać precesję i nutację wystarczy teraz: 
-        source_JNOW = source_J2000.transform_to(frame_now)
-        # -- zapisujemy wartości RA i DEC po precesji do nowych zmiennych --
-        source_JNOW_RA = (source_JNOW.ra*u.degree).value
-        source_JNOW_DEC = (source_JNOW.dec*u.degree).value
-        # ------------------------------------------------
-
-        # -- korekta funkcji autokorelacji --
-        # ze względu na 2 i 3 poziomową kwantyzację etc.
-        tab[i].correct_auto(scannr = i+1)
-
-        # -- wygładzanie Hanninga --
-        tab[i].hanning_smooth()
-
-        # -- korekta na ruch ziemi --
-        # obejmuje ona: 
-        # 1. ruch wokół własnej osi
-        # 2. ruch obiegowy wokół barycentrum US
-        # 3. ruch względem lokalnej grupy gwiazd (LSR)
-        # dwa pierwsze punkty są zrealizowane z dokładnością do ~ 1 cm/s
-        # trzeci opiera się na metodzie, przepisanej żywcem z oryginalnego A2S
-        # jej dokładność budzi pewne wątpliwości
-        # argumenty doppset: 1: RA po precesji (deg), 2: DEC po precesji (deg)
-        # 3: szerokość geograficzna (deg) 4: długość geogradiczna (deg, E > 0, W < 0)
-        # 5: wysokość nad geoidą zi-emii
-        # doppset wykonuje również rotację f. autokorelacji
-        tab[i].doppset(source_JNOW_RA, source_JNOW_DEC, szer_geog, dl_geog, height)
-        print("-----> scan %d: line shifted by %4.3f channels" % (i+1, round(tab[i].fcBBC[0],3)))
-
-        # -- kilka statystyk liczymy --
-        tab[i].do_statistics()
-        
-        # -- skalujemy tsys w mK --
-        tab[i].scale_tsys_to_mK()
-
-        # --- PRINTOWANIE ---
-        # zakomentowane, normalnie tego nie potrzebujemy
-        #tab[i].extended_print()
-
-        # -- robimy transformatę fouriera --
-        tab[i].make_transformata_furiata()
-
-        # -- kalibrujemy tsys --
-        tab[i].calibrate_in_tsys()
-    print("-----------------------------------------")
-
-    # -- zapisujemy --
-    #plik wynikowy z zapisanymi danymi
-    print("-----> Saving to file WYNIK.DAT")
-    fle = open("WYNIK.DAT", "w+")
-
-    # pętla zapisująca 
-    for i in range(len(tab)): # i to skany (zazwyczaj 0 - 19)
-        for ee in range(len(tab[i].auto)): # ee to BBC (zazwyczaj 0 - 3) 
-            # ---- nagłówek ----
-            fle.write("???\n")
-            fle.write(repr(tab[i].rah).rjust(6) + repr(tab[i].ram).rjust(6) + repr(tab[i].ras).rjust(6) + repr(tab[i].decd).rjust(6) + repr(tab[i].decm).rjust(6) + repr(tab[i].decs).rjust(6) +"\n" )
-            fle.write(repr(source_ld).rjust(6) + repr(source_lm).rjust(6) + repr(source_bd).rjust(6) + repr(source_bm).rjust(6) + "\n")
-            fle.write(repr(tab[i].azd).rjust(6) + repr(tab[i].azm).rjust(6) + repr(tab[i].eld).rjust(6) + repr(tab[i].elm).rjust(6) + "\n" )
-            fle.write(tab[i].datestring.rjust(10) + "\n")
-            fle.write(repr(int(tab[i].STh)).rjust(6) + repr(int(tab[i].STm)).rjust(6) + repr(int(tab[i].STs)).rjust(6) + "\n")
-            fle.write(repr(round(tab[i].tsys[0] / 1000.0, 3)).rjust(8)  + "\n")
-            fle.write("0".rjust(6) + "\n")
-            fle.write(repr(ee).rjust(6) + "\n")
-            fle.write("$$$\n")
-            fle.write(repr(len(tab[i].spectr_bbc_final[ee])).rjust(12) + repr(int(tab[i].bw[ee])).rjust(15) + repr(0.25).rjust(15) + repr(tab[i].vlsr[ee]).rjust(11) + repr(tab[i].rest[ee]).rjust(18) + "\n")
-            fle.write(tab[i].sourcename + "\n")
-            fle.write("***" + "\n")
-            fle.write(repr(int(tab[i].UTh)).rjust(8) + repr(int(tab[i].UTm)).rjust(8) + repr(int(tab[i].UTs)).rjust(8) + repr(int(tab[i].INT)).rjust(8) + "\n")
-            # --- dane ----
-            for j in range(len(tab[i].spectr_bbc_final[ee])): # j to kanały (zazwyczaj 0 - 2047)
-                # sprawdzamy, czy to co próbujemy zapisać nie jest aby za długie
-                if len(repr( round(tab[i].spectr_bbc_final[ee][j] ,1))) < 9:
-                    # jeśli tak, zapisujemy
-                    fle.write( repr( round(tab[i].spectr_bbc_final[ee][j] ,1) ).rjust(10) )
-                else:
-                    # jak nie... to może sp......
-                    fle.write( repr(000.0).rjust(10) )
-                # co 8 wpisów przechodzimy do nowej linii
-                if (j + 1) % 8 == 0:
-                    fle.write("\n")
-        # ---------------------------------------------------
-
-    # -- zamykamy plik --
-    fle.close()
-
-    print("-----> Completed succesfully. Ending")
-    print("-----------------------------------------")
+    # i to wszystko
