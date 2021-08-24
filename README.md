@@ -1,44 +1,20 @@
 # a3s
 Python program, that makes FFT from 4096 point autocorrelation function
 
-current version: 1.0
+current version: 1.001
 
 APPEARS TO BE WORKING FINE
 
-Requirements:
+Requirements are listed in "requirements.txt"
 
-- astropy==4.1
+You can insall required packages by typing:
 
-- mpmath==1.2.1
-
-- numpy==1.19.5
-
-- pkg-resources==0.0.0
-
-- PyAstronomy==0.16.0
-
-- scipy==1.5.4
-
-- six==1.16.0
-
-
-To install required modules you can use pip
-
-- pip3 install astropy
-
-- pip3 install mpmath
-
-- pip3 install numpy
-
-- pip3 install PyAstronomy
-
-- pip3 install scipy
-
+- pip -r install requirements.txt
 
 I recommend to use venv
 
 
-usage:
+Program usage:
 
 a3s.py list_of_.DAT_files
 
