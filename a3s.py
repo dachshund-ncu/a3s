@@ -740,7 +740,6 @@ class observation:
                 fle.write("???\n")
                 fle.write(repr(self.scans[i].rah).rjust(6) + repr(self.scans[i].ram).rjust(6) + repr(self.scans[i].ras).rjust(6) + repr(self.scans[i].decd).rjust(6) + repr(self.scans[i].decm).rjust(6) + repr(self.scans[i].decs).rjust(6) +"\n" )
                 fle.write(repr(self.source_ld).rjust(6) + repr(self.source_lm).rjust(6) + repr(self.source_bd).rjust(6) + repr(self.source_bm).rjust(6) + "\n")
-                print(self.scans[i].azd)
                 fle.write(repr(self.scans[i].azd).rjust(6) + repr(self.scans[i].azm).rjust(6) + repr(self.scans[i].eld).rjust(6) + repr(self.scans[i].elm).rjust(6) + "\n" )
                 fle.write(self.scans[i].datestring.rjust(10) + "\n")
                 fle.write(repr(int(self.scans[i].STh)).rjust(6) + repr(int(self.scans[i].STm)).rjust(6) + repr(int(self.scans[i].STs)).rjust(6) + "\n")
