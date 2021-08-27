@@ -6,7 +6,7 @@ Program A3S
 Version: 1.001 (24.09.2021)
 Author: Michał Durjasz
 
-Based on A2S by P. Wolak
+Based on A2S by K. Borkowski
 
 Usage:
 python3 a3s.py list_of_dat_files
@@ -748,7 +748,7 @@ class observation:
                 fle.write(repr(self.scans[i].azd).rjust(6) + repr(self.scans[i].azm).rjust(6) + repr(self.scans[i].eld).rjust(6) + repr(self.scans[i].elm).rjust(6) + "\n" )
                 fle.write(self.scans[i].datestring.rjust(10) + "\n")
                 fle.write(repr(int(self.scans[i].STh)).rjust(6) + repr(int(self.scans[i].STm)).rjust(6) + repr(int(self.scans[i].STs)).rjust(6) + "\n")
-                fle.write(repr(round(self.scans[i].tsys[0] / 1000.0, 3)).rjust(8)  + "\n")
+                fle.write(repr(round(self.scans[i].tsys[ee] / 1000.0, 3)).rjust(8)  + "\n")
                 fle.write("0".rjust(6) + "\n")
                 fle.write(repr(ee).rjust(6) + "\n")
                 fle.write("$$$\n")
