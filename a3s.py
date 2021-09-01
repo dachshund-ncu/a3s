@@ -16,7 +16,7 @@ Outputs spectra to "WYNIK.DAT" file
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, complex128
+from numpy import exp, nan, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, complex128
 from numpy.fft import fft
 # -----------
 # -- math i mpmath --
@@ -327,7 +327,12 @@ class scan:
             # teraz korekcja na kwantyzację sygnału
             # punkt po punkcie
             for j in range(len(self.auto[i])):
-                self.auto[i][j] = self.__correctACF(self.auto[i][j], self.r0[i], self.bias0[i])
+                # by uniknąć "nan"
+                tmp_number = self.__correctACF(self.auto[i][j], self.r0[i], self.bias0[i])
+                if tmp_number is None:
+                    self.auto[i][j] = 0.0
+                else:
+                    self.auto[i][j] = tmp_number
 
     def hanning_smooth(self):
         # wygładzamy funkcję autokorelacji
