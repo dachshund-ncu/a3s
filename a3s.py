@@ -72,9 +72,21 @@ class scan:
         self.rah = int(tmp[1])
         self.ram = int(tmp[2])
         self.ras = int(tmp[3])
+
         # deklinacja
+        # jeśli pierwsza liczba (stopnie) jest większa od zera
         if float(tmp[4]) > 0:
             self.DEC = float(tmp[4]) + float(tmp[5]) / 60.0 + float(tmp[6]) / 3600.0
+        # jeśli pierwsza liczba jest równa zero, sprawdzamy znak przed
+        elif float(tmp[4]) == 0.0:
+            # jeśli jest minus, lecimy z ujemnym dec
+            if tmp[4][0] == '-':
+                self.DEC = -1.0 * (-1.0 * float(tmp[4]) + float(tmp[5]) / 60.0 + float(tmp[6]) / 3600.0)
+            # jeśli jest plus lub nic nie ma (jak na kurachen.org), lecimy z dodatnim dec
+            else:
+                self.DEC = float(tmp[4]) + float(tmp[5]) / 60.0 + float(tmp[6]) / 3600.0
+        
+        # jeśli pierwsza liczba (stopnie) jest mniejsza od zera
         else:
             self.DEC = -1.0 * (-1.0 * float(tmp[4]) + float(tmp[5]) / 60.0 + float(tmp[6]) / 3600.0)
 
@@ -655,6 +667,7 @@ class observation:
         # -- deklarujemy obiekt sky coord, w którym będą zawarte współrzędne --
         # -- WAŻNE: współrzędne są wzięte z PIERWSZEGO skanu --
         self.source_J2000 = SkyCoord(ra=self.scans[0].RA*u.hourangle, dec=self.scans[0].DEC*u.degree, frame=FK5, equinox='J2000')
+        #(sunc_new.ra*u.degree).value
         # PRECESJA I NUTACJA 
         # -- do precesji deklarujemy nowy frame FK5 z epoką pierwszego skanu --
         self.frame_now = FK5(equinox="J" + str(self.scans[0].decimalyear))
@@ -722,7 +735,7 @@ class observation:
 
             # --- PRINTOWANIE ---
             # zakomentowane, normalnie tego nie potrzebujemy
-            #tab[i].extended_print()
+            #self.scans[i].extended_print()
 
             # Najważniejsze!
             # -- robimy transformatę fouriera --
