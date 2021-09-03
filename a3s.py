@@ -36,6 +36,14 @@ from sys import argv, exit
 from PyAstronomy.pyasl import helcorr
 # ----------------
 
+# - checking for debug option -
+debug_flag = False
+for i in argv:
+    if i == '--debug':
+        from matplotlib.pyplot import *
+        debug_flag = True
+# ------------------------------
+
 # -- deklarujemy klasę pliku .DAT --
 class scan:
 
@@ -504,6 +512,14 @@ class scan:
         print("rmean (bias of 0) =                 %.4f    %.4f    %.4f    %.4f" % (self.rMean[0], self.rMean[1], self.rMean[2], self.rMean[3]))
         print("Threshold (u=V/rms) =               %.4f    %.4f    %.4f    %.4f" % (self.V_sigma[0], self.V_sigma[1], self.V_sigma[2], self.V_sigma[3]))
     
+    def plot_scan(self):
+        plot(range(len(self.spectr_bbc_final[0])), self.spectr_bbc_final[0], label="bbc1")
+        plot(range(len(self.spectr_bbc_final[0])), self.spectr_bbc_final[1], label="bbc2")
+        plot(range(len(self.spectr_bbc_final[0])), self.spectr_bbc_final[2], label="bbc3")
+        plot(range(len(self.spectr_bbc_final[0])), self.spectr_bbc_final[3], label="bbc4")
+        legend()
+        show()
+
     # ---- POMOCNICZE METODY PRYWATNE ----
 
     # -- oblicza prędkość słońca względem LSR (local standard of rest) --
@@ -743,6 +759,10 @@ class observation:
 
             # -- kalibrujemy tsys --
             self.scans[i].calibrate_in_tsys()
+
+            # -- plotujemy skany jeśli trzeba --
+            if debug_flag == True:
+                self.scans[i].plot_scan()
         
         # printujemy belkę rozdzielającą
         print("-----------------------------------------")
