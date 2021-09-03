@@ -35,14 +35,14 @@ from sys import argv, exit
 # -- barycorrpy --
 from PyAstronomy.pyasl import helcorr
 # ----------------
-
-# - checking for debug option -
+# - sprawdzamy, czy wybrano opcję "debug" -
 debug_flag = False
 for i in argv:
     if i == '--debug':
-        from matplotlib.pyplot import *
+        from matplotlib.pyplot import plot, show, legend
         debug_flag = True
-# ------------------------------
+        break
+# ----------------
 
 # -- deklarujemy klasę pliku .DAT --
 class scan:
