@@ -16,7 +16,7 @@ Outputs spectra to "WYNIK.DAT" file
 
 # -- importujemy potrzebne moduły --
 # -- numpy --
-from numpy import exp, nan, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, complex128
+from numpy import exp, nan, int64, sin, cos, asarray, sqrt, mean, pi, radians, zeros, inf, complex128, linspace
 from numpy.fft import fft
 # -----------
 # -- math i mpmath --
@@ -31,6 +31,7 @@ import astropy.units as u
 # -------------
 # -- sys --
 from sys import argv, exit
+from os import path
 # ---------
 # -- barycorrpy --
 from PyAstronomy.pyasl import helcorr
@@ -65,9 +66,14 @@ class scan:
     # -- metoda wczytująca plik .DAT --
     def read_header_and_data(self):
         # -- wczytujemy plik do pamięci --
-        fle = open(self.fname, 'r+')
-        a = fle.readlines() # zapisuje linie pliku w tablicy
-        fle.close() # zamykamy obiekt pliku, nie będzie nam więcej potrzebny
+        try:
+            fle = open(self.fname, 'r+')
+            a = fle.readlines() # zapisuje linie pliku w tablicy
+            fle.close() # zamykamy obiekt pliku, nie będzie nam więcej potrzebny
+        except FileNotFoundError:
+            print("-----> File \"%s\" does not exist! Exiting..." % self.fname)
+            print("-----------------------------------------")
+            exit()
 
         # -- czytamy dalej --
         # nazwa źródła
@@ -437,17 +443,18 @@ class scan:
         self.auto_prepared_to_fft = zeros((4, self.NN), dtype=complex128) # docelowa
         # --- rotujemy funkcję autokorelacji (mnożymy przez exp(sqrt(-1) * self.fr)) --
         for w in range(len(self.auto)): # iteruje po BBC
-            for i in range(0, int(self.NN / 2) ): # iteruje po kanałach
-                phase = (i) * self.fr[w]
-                shift_coefficient = exp(math_sqrt(-1) * phase)
-                # non-mirror part
-                self.auto_prepared_to_fft[w][i] = self.auto[w][i+1] * shift_coefficient
-                # mirror part
-                self.auto_prepared_to_fft[w][-i] = self.auto_prepared_to_fft[w][i].conjugate() # odwracamy znakiem część zespoloną
-            self.auto_prepared_to_fft[w][2048] = (0 + 0j)
+            phases = linspace(0, int(self.NN / 2)-1, int(self.NN / 2)) * self.fr[w] # fazy
+            shift_coeffs = exp(math_sqrt(-1) * phases)
+            # shifted auto array
+            tmpwp = self.auto[w][1:] * shift_coeffs
+            # non-mirror part
+            self.auto_prepared_to_fft[w][:int(self.NN / 2)] = tmpwp
+            # mirror part
+            self.auto_prepared_to_fft[w][int(self.NN / 2)+1:] = tmpwp[::-1][:-1].conjugate() # odwracamy znakiem część zespoloną
+
+            self.auto_prepared_to_fft[w][4096] = (0 + 0j)
         # --------------
-
-
+        
     # -- liczy kilka parametrów --
     def do_statistics(self):
         # liczymy rmean
@@ -642,10 +649,16 @@ class observation:
 
     # --- metoda wczytująca listę ---
     def read_list_of_files(self, list_filename):
-        # -- otwieramy --
-        d = open(list_filename, "r+")
-        a = d.readlines()
-        d.close()
+        try:
+            # -- otwieramy --
+            d = open(list_filename, "r+")
+            a = d.readlines()
+            d.close()
+        except FileNotFoundError:
+            print("-----> File \"%s\" does not exist! Exiting..." % list_filename)
+            print("-----------------------------------------")
+            exit()
+
         # ---------------
         # -- czytamy pliki --
         flenames = []
