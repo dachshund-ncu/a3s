@@ -278,6 +278,12 @@ class scan:
             tmp = a[i].split()
             self.bbc4I.append(float(tmp[1]))
         
+	
+        # -- wycinamy kanał 1313 --
+        self.bbc4I[1312] = self.bbc4I[1311]
+        self.bbc4I[1313] = self.bbc4I[1311]
+        self.bbc4I[1314] = self.bbc4I[1311]
+
         # -- agregujemy do jednej tablicy --
         self.auto.append(self.bbc1I)
         self.auto.append(self.bbc2I)
