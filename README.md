@@ -1,17 +1,17 @@
 # a3s
 Python program, that makes FFT from 4096 point autocorrelation function
 
-current version: 1.001
+current version: 1.002
 
-APPEARS TO BE WORKING FINE
+Requirements:
 
-Requirements are listed in "requirements.txt"
+- numpy
 
-You can insall required packages by typing:
+- mpmath
 
-- pip -r install requirements.txt
+- astropy
 
-I recommend to use venv
+- barycorrpy
 
 
 Program usage:
