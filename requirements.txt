@@ -1,0 +1,4 @@
+numpy
+mpmath
+astropy
+barycorrpy
