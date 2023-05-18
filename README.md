@@ -3,7 +3,7 @@ Python program, that makes FFT from 4096 point autocorrelation function - it is 
 
 current version: 1.002
 
-Requirements:
+## Requirements:
 
 - numpy
 
@@ -13,12 +13,16 @@ Requirements:
 
 - barycorrpy
 
+You can install these by typing in the terminal:
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+```
 
-Program usage:
+## Usage
 ```bash
 a3s.py list_of_.DAT_files
 ```
+### Output
 
-Output:
-
-Script returns file named ```WYNIK.DAT``` with spectra
+Script returns file named ```WYNIK.DAT```.
